@@ -548,14 +548,13 @@ task convertCRAMtoFASTQ {
 
 task kmerCountingKMC {
     input {
-        File input_read_file_1
-        File? input_read_file_2
+        Array[File] input_read_fastqs
         String output_file_name
 
         Int kmer_length
         Int max_ram = 64
-	    Int nb_cores = 16
-        Int disk_size = round(size(input_read_file_1, "G") + size(input_read_file_2, "G")) + 10
+	Int nb_cores = 16
+        Int disk_size = size(input_read_fastqs, "GB") + 64
     }
 
     command <<<
@@ -570,12 +569,13 @@ task kmerCountingKMC {
     set -o xtrace
     #to turn off echo do 'set +o xtrace'
 
-    echo ~{input_read_file_1} > scratch_file.txt
-    ~{if defined(input_read_file_2) then "echo ~{input_read_file_2} >> scratch_file.txt" else ""}
+    READ_FILES=(~{sep=" " input_read_fastqs})
+    for READ_FILE in ${READ_FILES[@]};do
+        echo ${READ_FILE} >> read_files.txt
+    done
 
-    kmc -k~{kmer_length} -m~{max_ram} -okff -t~{nb_cores} @scratch_file.txt ~{output_file_name} .
+    kmc -k~{kmer_length} -m~{max_ram} -okff -t~{nb_cores} @read_files.txt ~{output_file_name} .
 
-    rm scratch_file.txt
     >>>
     output {
         File kff_file = output_file_name + ".kff"
