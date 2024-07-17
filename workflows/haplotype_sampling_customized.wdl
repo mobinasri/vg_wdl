@@ -107,8 +107,7 @@ workflow HaplotypeSampling {
                     referenceFasta=REFERENCE_FASTA,
                     memSizeGB=4,
                     threadCount=4,
-                    diskSizeGB=floor(4 * size(READ_FILE, "GB")) + 32,
-                    dockerImage="tpesout/hpp_base:latest"
+                    diskSizeGB=floor(4 * size(READ_FILE, "GB")) + 32
             }
         }
         call utils.kmerCountingKMC {
