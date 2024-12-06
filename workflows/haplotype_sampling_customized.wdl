@@ -51,8 +51,7 @@ workflow HaplotypeSampling {
         Float ABSENT_SCORE = 0.8
         Boolean INCLUDE_REFERENCE = true
         Boolean DIPLOID = true
-
-
+        String? SAMPLE_NAME_TO_REMOVE
     }
 
     String OUTPUT_NAME_PREFIX = select_first([IN_OUTPUT_NAME_PREFIX, "haplotype_sampled_graph"])
@@ -138,12 +137,80 @@ workflow HaplotypeSampling {
                 nb_cores=CORES,
                 use_diploid_sampling=DIPLOID
         }
+        if (defined(SAMPLE_NAME_TO_REMOVE)){
+            call remove_sample_from_graph {
+                input:
+                    graph_gbz = samplingHaplotypes.output_graph,
+                    sample_name = select_first([SAMPLE_NAME_TO_REMOVE])
+            }
+        }
+        File sampled_graph_per_hap_number = select_first([remove_sample_from_graph.output_graph_gbz, samplingHaplotypes.output_graph])
     }
 
 
     output {
-        Array[File] sampled_graph = samplingHaplotypes.output_graph
+        Array[File] sampled_graph = sampled_graph_per_hap_number
     }
 
+}
+
+
+task remove_sample_from_graph {
+    input {
+        File graph_gbz
+        String sample_name
+        # runtime configurations
+        Int memSize=16
+        Int threadCount=8
+        Int diskSize=128
+        String dockerImage="quay.io/vgteam/vg:v1.51.0"
+        Int preemptible=2
+    }
+    command <<<
+        # Set the exit code of a pipeline to that of the rightmost command
+        # to exit with a non-zero status, or zero if all commands of the pipeline exit
+        set -o pipefail
+        # cause a bash script to exit immediately when a command fails
+        set -e
+        # cause the bash shell to treat unset variables as an error and exit immediately
+        set -u
+        # echo each line of the script to stdout so we can see what is happening
+        # to turn off echo do 'set +o xtrace'
+        set -o xtrace
+       
+        INPUT_FILE=~{graph_gbz}
+        INPUT_PREFIX=$(basename ${INPUT_FILE%%.gbz})
+        OUTPUT_PREFIX="${INPUT_PREFIX}.~{sample_name}_removed"
+
+        # create gbwt from input gbz
+        vg gbwt \
+            -Z ~{graph_gbz} \
+            -o ${INPUT_PREFIX}.gbwt
+
+        # remove sample from gbwt and create a new gbwt
+        vg gbwt \
+            ${INPUT_PREFIX}.gbwt \
+            --remove-sample ~{sample_name}  \
+            -o ${OUTPUT_PREFIX}.gbwt
+
+        mkdir output
+        # make a new gbz file using the new gbwt
+        vg gbwt \
+            ${OUTPUT_PREFIX}.gbwt \
+            -x ~{graph_gbz} \
+            --gbz-format  \
+            --graph-name output/${OUTPUT_PREFIX}.gbz
+ 
+    >>> 
+    runtime {
+        docker: dockerImage
+        memory: memSize + " GB"
+        cpu: threadCount
+        disks: "local-disk " + diskSize + " SSD"
+        preemptible : preemptible
+    }
+    output {
+        File output_graph_gbz = glob("output/*.gbz")[0]
+    }
 }
 
