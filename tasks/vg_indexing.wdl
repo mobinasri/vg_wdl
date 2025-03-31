@@ -7,6 +7,7 @@ task createDistanceIndex {
         Int nb_cores = 16
         Int in_extract_mem = 120
         Int in_extract_disk = 2 * round(size(in_gbz_file, "G")) + 20
+        String docker_image = "quay.io/vgteam/vg:v1.51.0"
     }
     String output_prefix = sub(basename(in_gbz_file), "\\.gbz$", "")
 
@@ -24,8 +25,7 @@ task createDistanceIndex {
         cpu: nb_cores
         memory: in_extract_mem + " GB"
         disks: "local-disk " + in_extract_disk + " SSD"
-        docker: "quay.io/vgteam/vg:v1.50.1"
-
+        docker: docker_image
     }
 }
 
@@ -35,6 +35,7 @@ task createRIndex {
         Int nb_cores = 16
         Int in_extract_mem = 120
         Int in_extract_disk = 2 * round(size(in_gbz_file, "G")) + 20
+        String docker_image = "quay.io/vgteam/vg:v1.51.0"
     }
 
     String out_prefix_name = sub( basename(in_gbz_file), "\\.gbz$", "")
@@ -63,8 +64,7 @@ task createRIndex {
         cpu: nb_cores
         memory: in_extract_mem + " GB"
         disks: "local-disk " + in_extract_disk + " SSD"
-        docker: "quay.io/vgteam/vg:v1.50.1"
-
+        docker: docker_image
     }
 
 }
@@ -80,6 +80,7 @@ task createHaplotypeIndex {
         Int nb_cores = 16
         Int in_extract_mem = 120
         Int in_extract_disk = 2 * round(size(in_gbz_file, "G") + size(in_dist_index, "G") + size(in_R_index, "G")) + 20
+        String docker_image = "quay.io/vgteam/vg:v1.51.0"
     }
 
     String out_prefix_name = sub( basename(in_gbz_file), "\\.gbz$", "")
@@ -113,7 +114,7 @@ task createHaplotypeIndex {
         cpu: nb_cores
         memory: in_extract_mem + " GB"
         disks: "local-disk " + in_extract_disk + " SSD"
-        docker: "quay.io/vgteam/vg:v1.50.1"
+        docker: docker_image
 
     }
 
@@ -128,6 +129,7 @@ task createMinimizerIndex {
         Int nb_cores = 16
         Int in_extract_mem = 120
         Int in_extract_disk = 4 * round(size(in_gbz_file, "G") + size(in_dist_index, "G")) + 20
+        String docker_image = "quay.io/vgteam/vg:v1.51.0"
     }
 
     command {
@@ -154,8 +156,7 @@ task createMinimizerIndex {
         cpu: nb_cores
         memory: in_extract_mem + " GB"
         disks: "local-disk " + in_extract_disk + " SSD"
-        docker: "quay.io/vgteam/vg:v1.50.1"
-
+        docker: docker_image
     }
 
 }

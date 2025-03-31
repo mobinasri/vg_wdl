@@ -31,6 +31,7 @@ workflow HaplotypeSampling {
         ABSENT_SCORE: "Score for absent kmers. (Default: 0.8)"
         INCLUDE_REFERENCE: "Include reference paths and generic paths from the full graph in the sampled graph. (Default: true)"
         DIPLOID: "Activate diploid sampling. (Default: true)"
+        DOCKER_IMAGE: "VG docker image"
     }
     input {
         File IN_GBZ_FILE
@@ -52,6 +53,7 @@ workflow HaplotypeSampling {
         Boolean INCLUDE_REFERENCE = true
         Boolean DIPLOID = true
         String? SAMPLE_NAME_TO_REMOVE
+        String DOCKER_IMAGE = "quay.io/vgteam/vg:v1.64.1"
     }
 
     String OUTPUT_NAME_PREFIX = select_first([IN_OUTPUT_NAME_PREFIX, "haplotype_sampled_graph"])
@@ -64,7 +66,8 @@ workflow HaplotypeSampling {
         if (!defined(IN_DIST_FILE)) {
             call index.createDistanceIndex {
                 input:
-                    in_gbz_file=IN_GBZ_FILE
+                    in_gbz_file=IN_GBZ_FILE,
+                    docker_image=DOCKER_IMAGE
             }
         }
 
@@ -74,7 +77,8 @@ workflow HaplotypeSampling {
             call index.createRIndex {
                 input:
                     in_gbz_file=IN_GBZ_FILE,
-                    nb_cores=CORES
+                    nb_cores=CORES,
+                    docker_image=DOCKER_IMAGE
             }
         }
 
@@ -89,7 +93,8 @@ workflow HaplotypeSampling {
                 nb_cores=CORES,
                 kmer_length=KMER_LENGTH,
                 window_length=WINDOW_LENGTH,
-                subchain_length=SUBCHAIN_LENGTH
+                subchain_length=SUBCHAIN_LENGTH,
+                docker_image = DOCKER_IMAGE
         }
     }
 
@@ -135,13 +140,15 @@ workflow HaplotypeSampling {
                 absent_score = ABSENT_SCORE,
                 include_reference = INCLUDE_REFERENCE,
                 nb_cores=CORES,
-                use_diploid_sampling=DIPLOID
+                use_diploid_sampling=DIPLOID,
+                docker_image=DOCKER_IMAGE
         }
         if (defined(SAMPLE_NAME_TO_REMOVE)){
             call remove_sample_from_graph {
                 input:
                     graph_gbz = samplingHaplotypes.output_graph,
-                    sample_name = select_first([SAMPLE_NAME_TO_REMOVE])
+                    sample_name = select_first([SAMPLE_NAME_TO_REMOVE]),
+                    docker_image = DOCKER_IMAGE
             }
         }
         File sampled_graph_per_hap_number = select_first([remove_sample_from_graph.output_graph_gbz, samplingHaplotypes.output_graph])
@@ -163,7 +170,7 @@ task remove_sample_from_graph {
         Int memSize=16
         Int threadCount=8
         Int diskSize=128
-        String dockerImage="quay.io/vgteam/vg:v1.51.0"
+        String docker_image="quay.io/vgteam/vg:v1.51.0"
         Int preemptible=2
     }
     command <<<
@@ -203,7 +210,7 @@ task remove_sample_from_graph {
  
     >>> 
     runtime {
-        docker: dockerImage
+        docker: docker_image
         memory: memSize + " GB"
         cpu: threadCount
         disks: "local-disk " + diskSize + " SSD"
