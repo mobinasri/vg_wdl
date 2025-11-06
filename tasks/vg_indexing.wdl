@@ -1,11 +1,11 @@
 version 1.0
 
-
 task createDistanceIndex {
     input {
         File in_gbz_file
+        String options=""
         Int nb_cores = 16
-        Int in_extract_mem = 120
+        Int in_extract_mem = 200
         Int in_extract_disk = 2 * round(size(in_gbz_file, "G")) + 20
         String docker_image = "quay.io/vgteam/vg:v1.51.0"
     }
@@ -14,7 +14,7 @@ task createDistanceIndex {
     command {
         set -eux -o pipefail
 
-        vg index -t ~{nb_cores} -j "~{output_prefix}.dist" ~{in_gbz_file}
+        vg index ~{options} -t ~{nb_cores} -j "~{output_prefix}.dist" ~{in_gbz_file}
     }
 
     output {
@@ -33,7 +33,7 @@ task createRIndex {
     input {
         File in_gbz_file
         Int nb_cores = 16
-        Int in_extract_mem = 120
+        Int in_extract_mem = 200
         Int in_extract_disk = 2 * round(size(in_gbz_file, "G")) + 20
         String docker_image = "quay.io/vgteam/vg:v1.51.0"
     }
@@ -78,7 +78,7 @@ task createHaplotypeIndex {
         Int window_length
         Int subchain_length
         Int nb_cores = 16
-        Int in_extract_mem = 120
+        Int in_extract_mem = 200
         Int in_extract_disk = 2 * round(size(in_gbz_file, "G") + size(in_dist_index, "G") + size(in_R_index, "G")) + 20
         String docker_image = "quay.io/vgteam/vg:v1.51.0"
     }
