@@ -98,11 +98,11 @@ workflow HaplotypeSampling {
 
     File haplotype_index = select_first([HAPL_FILE, createHaplotypeIndex.output_hap_index])
 
+       
     if (!defined(KFF_FILE)) {
         call utils.kmerCountingKMC {
             input:
-                input_read_file_1=INPUT_READ_FILE_FIRST,
-                input_read_file_2=INPUT_READ_FILE_SECOND,
+                input_read_fastqs=select_all([INPUT_READ_FILE_FIRST,INPUT_READ_FILE_SECOND]),
                 output_file_name=OUTPUT_NAME_PREFIX,
                 kmer_length=KMER_LENGTH,
                 nb_cores=CORES
