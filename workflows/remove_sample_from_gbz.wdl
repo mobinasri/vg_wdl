@@ -14,7 +14,6 @@ workflow RemoveSampleFromGraph {
     parameter_meta {
         IN_GBZ_FILE: "Path to .gbz index file"
         SAMPLE_NAME_TO_REMOVE: "Name of the sample to remove from graph"
-        IN_OUTPUT_NAME_PREFIX: "Name of the output file (Default: haplotype_sampled_graph)"
         IN_KMER_LENGTH: "Size of kmer using for sampling (Up to 31) (Default: 29)"
         CORES: "Number of cores to use with commands. (Default: 16)"
         WINDOW_LENGTH: "Window length used for building the minimizer index. (Default: 11)"
@@ -24,15 +23,14 @@ workflow RemoveSampleFromGraph {
     input {
         File IN_GBZ_FILE
         String SAMPLE_NAME_TO_REMOVE
-        String? IN_OUTPUT_NAME_PREFIX
         Int? IN_KMER_LENGTH
         Int CORES = 16
         Int WINDOW_LENGTH = 11
         Int SUBCHAIN_LENGTH = 10000
         String DOCKER_IMAGE = "quay.io/vgteam/vg:v1.64.1"
+        String CREATE_INDEX_OPTIONS=""
     }
 
-    String OUTPUT_NAME_PREFIX = select_first([IN_OUTPUT_NAME_PREFIX, "haplotype_sampled_graph"])
     Int KMER_LENGTH = select_first([IN_KMER_LENGTH, 29])
 
     call hap_wdl.remove_sample_from_graph {
@@ -45,7 +43,8 @@ workflow RemoveSampleFromGraph {
     call index.createDistanceIndex {
         input:
             in_gbz_file = remove_sample_from_graph.output_graph_gbz,
-            docker_image = DOCKER_IMAGE
+            docker_image = DOCKER_IMAGE,
+            options = CREATE_INDEX_OPTIONS
     }
     
     call index.createRIndex {
