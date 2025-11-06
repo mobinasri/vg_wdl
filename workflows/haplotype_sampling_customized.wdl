@@ -31,6 +31,7 @@ workflow HaplotypeSampling {
         ABSENT_SCORE: "Score for absent kmers. (Default: 0.8)"
         INCLUDE_REFERENCE: "Include reference paths and generic paths from the full graph in the sampled graph. (Default: true)"
         DIPLOID: "Activate diploid sampling. (Default: true)"
+        CREATE_DISTANCE_INDEX_OPTIONS: ""
         DOCKER_IMAGE: "VG docker image"
     }
     input {
