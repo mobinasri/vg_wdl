@@ -58,6 +58,18 @@ workflow GiraffeDeepVariant {
         DV_MODEL_DATA: ".data-00000-of-00001 file for a custom DeepVariant calling model"
         DV_MODEL_FILES: "Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format"
         DV_MODEL_VARIABLES_FILES: "Array of files that need to go in a 'variables' subdirectory for a DV model"
+        DV_PANGENOME_GBZ: "(OPTIONAL) Path to a pangenome graph in GBZ format for pangenome-aware DV."
+        DV_PANGENOME_IMAGE_HEIGHT: "(OPTIONAL) Height of the pangenome part of the pileup images for pangenome-aware DV. It will be used only if DV_PANGENOME_GBZ is set."
+        DV_PANGENOME_SHARED_MEMORY_SIZE_GB: "(OPTIONAL) Size of the shared memory segment in GB for loading pangenome in DeepVariant. It will be used only if PANGENOME_GBZ is set."
+        DV_PANGENOME_REF_CHROM_PREFIX: "(OPTIONAL) The prefix to add to the chromosome name in the pangenome gbz file. It is empty by default. However sometimes we need to add a prefix (like 'GRCh38.') to the chromosome name in the pangenome gbz file to match the chromosome name in the BAM file. It is empty by default."
+        DV_PANGENOME_REF_NAME: "The name of the reference in the pangenome gbz file. It is 'GRCh38' by default."
+        REF_NAME_TO_REMOVE_FROM_PANGENOME: "(OPTIONAL) Name of the reference to remove from the graph before haplotype sampling"
+        DV_PANGENOME_HAPLOTYPE_SAMPLING: "Should haplotype sampling be done? Default is 'false'."
+        DV_PANGENOME_DIPLOID_SAMPLING: "Should haplotype sampling be done in diploid mode? Default is 'false'."
+        DV_PANGENOME_HAPLOTYPE_NUMBER: "Number of haplotypes for haplotype sampling. Default is 32."
+        CREATE_INDEX_OPTIONS_BEFORE_SAMPLING: "Additional options to pass to vg index before haplotype sampling. It is recommended to set --snarl-limit 1 to speed up index creation."
+        PANGENOMES_ARE_SAME: "Are the pangenome used for mapping and the one used for DeepVariant the same? It they are the same then the index files (especiallu .hapl) created for giraffe will be reused for DeepVariant. Default is 'false'."
+        HAPLOTYPE_INDEXING_MEM: "Memory, in GB, to use for haplotype sampling indexing tasks (distance index, r-index, haplotype index, sampling, and giraffe distance index). (Default: 200)"
         DV_KEEP_LEGACY_AC: "Should DV use the legacy allele counter behavior? If unspecified this is not done, unless set in the model. Might want to be on for short reads."
         DV_NORM_READS: "Should DV normalize reads itself? If unspecified this is not done, unless set in the model."
         OTHER_MAKEEXAMPLES_ARG: "Additional arguments for the make_examples step of DeepVariant"
@@ -126,6 +138,17 @@ workflow GiraffeDeepVariant {
         File? DV_MODEL_DATA
         Array[File]? DV_MODEL_FILES
         Array[File]? DV_MODEL_VARIABLES_FILES
+        File? DV_PANGENOME_GBZ
+        Int? DV_PANGENOME_IMAGE_HEIGHT
+        Int? DV_PANGENOME_SHARED_MEMORY_SIZE_GB
+        String? REF_NAME_TO_REMOVE_FROM_PANGENOME
+        String? DV_PANGENOME_REF_CHROM_PREFIX
+        String DV_PANGENOME_REF_NAME = "GRCh38"
+        Boolean DV_PANGENOME_HAPLOTYPE_SAMPLING = false
+        Boolean DV_PANGENOME_DIPLOID_SAMPLING = false
+        Int DV_PANGENOME_HAPLOTYPE_NUMBER = 32
+        String CREATE_INDEX_OPTIONS_BEFORE_SAMPLING = "--snarl-limit 1"
+        Int HAPLOTYPE_INDEXING_MEM = 200
         Boolean? DV_KEEP_LEGACY_AC
         Boolean? DV_NORM_READS
         String OTHER_MAKEEXAMPLES_ARG = ""
@@ -136,6 +159,7 @@ workflow GiraffeDeepVariant {
         Int MAP_CORES = 16
         Int MAP_MEM = 120
         Boolean HAPLOTYPE_SAMPLING = true
+        Boolean PANGENOMES_ARE_SAME = false
         Int BAM_PREPROCESS_MEM = 20
         Int REALIGN_MEM = if MAP_MEM < 40 then MAP_MEM else 40
         Int CALL_CORES = 8
@@ -242,6 +266,9 @@ workflow GiraffeDeepVariant {
         MAP_CORES=MAP_CORES,
         MAP_MEM=MAP_MEM,
         HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
+        CREATE_INDEX_OPTIONS_BEFORE_SAMPLING=CREATE_INDEX_OPTIONS_BEFORE_SAMPLING,
+        OUTPUT_HAPL=PANGENOMES_ARE_SAME,
+        HAPLOTYPE_INDEXING_MEM=HAPLOTYPE_INDEXING_MEM,
         VG_DOCKER=VG_DOCKER,
         VG_GIRAFFE_DOCKER=VG_GIRAFFE_DOCKER,
         VG_SURJECT_DOCKER=VG_SURJECT_DOCKER
@@ -279,6 +306,24 @@ workflow GiraffeDeepVariant {
         DV_MODEL_DATA=DV_MODEL_DATA,
         DV_MODEL_FILES=DV_MODEL_FILES,
         DV_MODEL_VARIABLES_FILES=DV_MODEL_VARIABLES_FILES,
+        PANGENOME_GBZ=DV_PANGENOME_GBZ,
+        DV_PANGENOME_IMAGE_HEIGHT=DV_PANGENOME_IMAGE_HEIGHT,
+        DV_PANGENOME_SHARED_MEMORY_SIZE_GB=DV_PANGENOME_SHARED_MEMORY_SIZE_GB,
+        REF_NAME_TO_REMOVE_FROM_PANGENOME=REF_NAME_TO_REMOVE_FROM_PANGENOME,
+        DV_PANGENOME_REF_CHROM_PREFIX=DV_PANGENOME_REF_CHROM_PREFIX,
+        DV_PANGENOME_REF_NAME=DV_PANGENOME_REF_NAME,
+        DV_PANGENOME_HAPLOTYPE_SAMPLING=DV_PANGENOME_HAPLOTYPE_SAMPLING,
+        DV_PANGENOME_DIPLOID_SAMPLING=DV_PANGENOME_DIPLOID_SAMPLING,
+        DV_PANGENOME_HAPLOTYPE_NUMBER=DV_PANGENOME_HAPLOTYPE_NUMBER,
+        READS_FOR_SAMPLING_1=INPUT_READ_FILE_1,
+        READS_FOR_SAMPLING_2=INPUT_READ_FILE_2,
+        PAIRED_READS_FOR_SAMPLING=PAIRED_READS,
+        DV_PANGENOME_HAPL_FILE=select_first([Giraffe.haplotype_index_input_gbz, HAPL_FILE]),
+        DV_PANGENOME_DIST_FILE=DIST_FILE,
+        HAPLOTYPE_SAMPLE_CORES = MAP_CORES,
+        CREATE_INDEX_OPTIONS_BEFORE_SAMPLING=CREATE_INDEX_OPTIONS_BEFORE_SAMPLING,
+        VG_DOCKER=VG_DOCKER,
+        HAPLOTYPE_INDEXING_MEM=HAPLOTYPE_INDEXING_MEM,
         DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
         DV_NORM_READS=DV_NORM_READS,
         OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
@@ -308,3 +353,4 @@ workflow GiraffeDeepVariant {
         File? output_unmapped_bam = DeepVariant.output_unmapped_bam
     }   
 }
+
