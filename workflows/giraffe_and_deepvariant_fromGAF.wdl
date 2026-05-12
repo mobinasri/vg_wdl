@@ -248,7 +248,7 @@ workflow GiraffeDeepVariantFromGAF {
         call utils.mergeAlignmentBAMChunks as mergeBAM {
             input:
             in_sample_name=SAMPLE_NAME,
-            in_alignment_bam_chunk_files=select_all(flatten([calling_bam, [splitBAMbyPath.bam_unmapped_file]]))
+            in_alignment_bam_chunk_files=flatten([calling_bam, [splitBAMbyPath.bam_unmapped_file]])
         }
     }
 
