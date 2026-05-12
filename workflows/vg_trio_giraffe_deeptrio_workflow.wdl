@@ -56,7 +56,7 @@ workflow vgTrioPipeline {
         Boolean SNPEFF_ANNOTATION = false               # Set to 'true' to run snpEff annotation on the joint genotyped VCF.
         Boolean CLEANUP_FILES = false                   # Set to 'true' to turn on intermediate file cleanup.
         Boolean ABRA_REALIGN = true                     # Set to 'true' to use ABRA2 IndelRealigner instead of GATK for indel realignmen
-        String DECOY_REGEX = ">GL\|>NC_007605\|>hs37d5\|>hs38d1_decoys\|>chrEBV\|>chrUn\|>chr\([1-2][1-9]\|[1-9]\|Y\)_" # grep regular expression string that is used to extract decoy contig ids. USE_DECOYS must be set to 'true'
+        String DECOY_REGEX = ">GL\\|>NC_007605\\|>hs37d5\\|>hs38d1_decoys\\|>chrEBV\\|>chrUn\\|>chr\\([1-2][1-9]\\|[1-9]\\|Y\\)_" # grep regular expression string that is used to extract decoy contig ids. USE_DECOYS must be set to 'true'
     }
     
     File PROBAND_INPUT_READ_FILE_1 = SIBLING_INPUT_READ_FILE_1_LIST[0]  # Input proband 1st read pair fastq.gz
