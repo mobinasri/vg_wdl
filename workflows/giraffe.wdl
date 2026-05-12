@@ -209,11 +209,11 @@ workflow Giraffe {
     # The zipcode file is optional but we still have a priority list of places to get it from.
     # But we can't select_first since they all might be null.
     Array[File] possible_zipcode_files = select_all([HaplotypeSampling.sampled_zipcodes, ZIPCODES_FILE])
-    # WDL 1.0 has no `None` literal. This `if (false)` block never executes,
-    # so `NULL_FILE` becomes a `File?` that is always `None`.
+    # We can't actually use None in WDL 1.0 so we need to use a nonexistent null file.
     if (false) {
         Array[File] no_files = []
-        File NULL_FILE = no_files[0]
+        #@ except: UnnecessaryFunctionCall
+        File NULL_FILE = select_first(no_files)
     }
     File? file_zipcodes = if length(possible_zipcode_files) > 0 then possible_zipcode_files[0] else NULL_FILE
     File file_dist = select_first([HaplotypeSampling.sampled_dist, DIST_FILE])
