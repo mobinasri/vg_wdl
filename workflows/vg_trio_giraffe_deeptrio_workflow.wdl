@@ -449,7 +449,7 @@ task runDeepVariantJointGenotyper {
 
     Int in_vgcall_cores = if in_small_resources then 6 else 6
     Int in_vgcall_disk = if in_small_resources then 1 else 100
-    String in_vgcall_mem = if in_small_resources then "1" else "50"
+    Int in_vgcall_mem = if in_small_resources then 1 else 50
 
     command <<<
         set -exu -o pipefail
@@ -498,7 +498,7 @@ task runSplitJointGenotypedVCF {
     
     Int in_cores = if in_small_resources then 6 else 6
     Int in_disk = if in_small_resources then 1 else 25
-    String in_mem = if in_small_resources then "1" else "50"
+    Int in_mem = if in_small_resources then 1 else 50
 
     command <<<
         set -exu -o pipefail
@@ -544,7 +544,7 @@ task mergeIndelRealignedBAMs {
 
     Int in_cores = if in_small_resources then 8 else 10
     Int in_disk = if in_small_resources then 1 else 100
-    String in_mem = if in_small_resources then "4" else "50"
+    Int in_mem = if in_small_resources then 4 else 50
 
     command <<<
         # Set the exit code of a pipeline to that of the rightmost command
@@ -644,7 +644,7 @@ task runEaglePhasing {
 
     Int in_cores = if in_small_resources then 2 else 8
     Int in_disk = if in_small_resources then 50 else 50
-    String in_mem = if in_small_resources then "10" else "20"
+    Int in_mem = if in_small_resources then 10 else 20
     
     command <<<
         set -exu -o pipefail
@@ -699,7 +699,7 @@ task runWhatsHapPhasing {
 
     Int in_cores = if in_small_resources then 2 else 8
     Int in_disk = if in_small_resources then 50 else 50
-    String in_mem = if in_small_resources then "20" else "20"
+    Int in_mem = if in_small_resources then 20 else 20
     
     Boolean genetic_map_available = defined(in_genetic_map)
     
@@ -755,7 +755,7 @@ task concatClippedVCFChunks {
     }
 
     Int in_vgcall_disk = if in_small_resources then 1 else 25
-    String in_vgcall_mem = if in_small_resources then "1" else "50"
+    Int in_vgcall_mem = if in_small_resources then 1 else 50
 
     command {
         # Set the exit code of a pipeline to that of the rightmost command
@@ -795,7 +795,7 @@ task bgzipMergedVCF {
     }
 
     Int in_vgcall_disk = if in_small_resources then 1 else 25
-    String in_vgcall_mem = if in_small_resources then "1" else "50"
+    Int in_vgcall_mem = if in_small_resources then 1 else 50
 
     # TODO:
     #   If GVCF in in_merged_vcf_file then output_vcf_extension="gvcf" else output_vcf_extension="vcf"
@@ -836,7 +836,7 @@ task normalizeVCF {
 
     Int in_vgcall_cores = if in_small_resources then 6 else 6
     Int in_vgcall_disk = if in_small_resources then 1 else 25
-    String in_vgcall_mem = if in_small_resources then "1" else "50"
+    Int in_vgcall_mem = if in_small_resources then 1 else 50
 
     command <<<
         # Set the exit code of a pipeline to that of the rightmost command
@@ -874,7 +874,7 @@ task snpEffAnnotateVCF {
 
     Int in_vgcall_cores = if in_small_resources then 6 else 6
     Int in_vgcall_disk = if in_small_resources then 10 else 25
-    String in_vgcall_mem = if in_small_resources then "10" else "50"
+    Int in_vgcall_mem = if in_small_resources then 10 else 50
 
     command <<<
         # Set the exit code of a pipeline to that of the rightmost command

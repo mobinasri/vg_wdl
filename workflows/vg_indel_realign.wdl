@@ -304,7 +304,7 @@ task sortMDTagBAMFile {
         File in_reference_dict_file
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command {

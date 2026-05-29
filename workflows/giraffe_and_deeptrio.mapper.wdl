@@ -385,7 +385,7 @@ task runVGGIRAFFE {
         String in_sample_name
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -435,7 +435,7 @@ task sortBAMFile {
         File in_bam_chunk_file
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -472,7 +472,7 @@ task indexBAMFile {
         String in_sample_name
         File in_bam_file
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -512,7 +512,7 @@ task fixBAMContigNaming {
         String in_prefix_to_strip
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -579,7 +579,7 @@ task mergeAlignmentBAMChunks {
         Array[File] in_alignment_bam_chunk_files
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -622,7 +622,7 @@ task splitBAMbyPath {
         File in_path_list_file
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<

@@ -368,7 +368,7 @@ task runVGMAP {
         Boolean in_small_resources = false
         Int in_map_cores = if in_small_resources then 8 else 32
         Int in_map_disk = if in_small_resources then 80 else 100
-        String in_map_mem = if in_small_resources then "80" else "100"
+        Int in_map_mem = if in_small_resources then 80 else 100
     }
 
     Boolean gbwt_options = defined(in_gbwt_file)
@@ -443,7 +443,7 @@ task runVGMPMAP {
         Boolean in_small_resources = false
         Int in_map_cores = if in_small_resources then 8 else 32
         Int in_map_disk = if in_small_resources then 80 else 100
-        String in_map_mem = if in_small_resources then "80" else "100"
+        Int in_map_mem = if in_small_resources then 80 else 100
     }
 
     Boolean gbwt_options = defined(in_gbwt_file)
@@ -523,7 +523,7 @@ task runVGGIRAFFE {
         Boolean in_small_resources = false
         Int in_map_cores = if in_small_resources then 4 else 16
         Int in_map_disk = if in_small_resources then 80 else 100
-        String in_map_mem = if in_small_resources then "80" else "100"
+        Int in_map_mem = if in_small_resources then 80 else 100
     }
 
     command <<<
@@ -589,7 +589,7 @@ task sortMDTagBAMFile {
         Boolean in_small_resources = false
         Int in_map_cores = if in_small_resources then 8 else 32
         Int in_map_disk = if in_small_resources then 10 else 10
-        String in_map_mem = if in_small_resources then "10" else "60"
+        Int in_map_mem = if in_small_resources then 10 else 60
     }
 
     command <<<
@@ -664,7 +664,7 @@ task mergeAlignmentBAMChunks {
         Boolean in_small_resources = false
         Int in_merge_bam_cores = if in_small_resources then 4 else 12
         Int in_merge_bam_disk = if in_small_resources then 10 else 100
-        String in_merge_bam_mem = if in_small_resources then "10" else "20"
+        Int in_merge_bam_mem = if in_small_resources then 10 else 20
         Int in_merge_bam_time = if in_small_resources then 30 else 240
     }
 
@@ -708,7 +708,7 @@ task mergeAlignmentGAMChunks {
         Boolean in_small_resources = false
         Int in_merge_gam_cores = if in_small_resources then 1 else 56
         Int in_merge_gam_disk = if in_small_resources then 20 else 400
-        String in_merge_gam_mem = if in_small_resources then "20" else "100"
+        Int in_merge_gam_mem = if in_small_resources then 20 else 100
         Int in_merge_gam_time = if in_small_resources then 30 else 1200
     }
 
