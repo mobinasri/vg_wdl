@@ -131,7 +131,7 @@ task extractSubsetPathNames {
         fi
 
         # If paths with []-enclosed subranges at the end exist, remove the
-        # subranges, because base-path namers are what will come out of
+        # subranges, because base-path names are what will come out of
         # surjection.
         # Also make sure to use a sensible order for digit runs (-V)
         cat path_list.txt | sed 's/\[[0-9][0-9]*\(-[0-9][0-9]*\)\?\]$//g' | sort -V | uniq >path_list.base.txt
