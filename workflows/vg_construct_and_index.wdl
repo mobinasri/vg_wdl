@@ -38,7 +38,7 @@ workflow vg_construct_and_index {
         Boolean in_small_resources = false
          
         # regex to use in grep for extracting decoy contig names from reference FASTA
-        String decoy_regex = ">GL\|>NC_007605\|>hs37d5\|>hs38d1_decoys\|>chrEBV\|>chrUn\|>chr\([1-2][1-9]\|[1-9]\|Y\)_"
+        String decoy_regex = ">GL\\|>NC_007605\\|>hs37d5\\|>hs38d1_decoys\\|>chrEBV\\|>chrUn\\|>chr\\([1-2][1-9]\\|[1-9]\\|Y\\)_"
         
         # vg docker image tag
         String vg_docker = "quay.io/vgteam/vg:v1.64.0"
@@ -80,7 +80,7 @@ workflow vg_construct_and_index {
     # combine them into a single graph with unique node IDs
     call combine_graphs { input:
         graph_name = graph_name,
-        contigs_vg = select_first([construct_chromosome_graph.contig_vg]),
+        contigs_vg = construct_chromosome_graph.contig_vg,
         decoy_contigs_vg = construct_decoy_graph.contig_vg,
         vg_docker = vg_docker,
         in_small_resources = in_small_resources
@@ -147,7 +147,7 @@ workflow vg_construct_and_index {
                     in_small_resources = in_small_resources
                 }
             }
-            Array[File] concat_pruned_vg_graph_lists = flatten([select_first([prune_graph_with_haplotypes.contigs_pruned_vg,[]]), select_first([prune_decoy_graphs.contig_pruned_vg,[]])]) 
+            Array[File] concat_pruned_vg_graph_lists = flatten([prune_graph_with_haplotypes.contigs_pruned_vg, prune_decoy_graphs.contig_pruned_vg]) 
         }
     }
     

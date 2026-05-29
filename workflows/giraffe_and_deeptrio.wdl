@@ -332,7 +332,7 @@ workflow vgGiraffeDeeptrio {
     }
     Array[File] childDeepVarGVCF = select_all(callDeepVariantCallVariantsChild.output_gvcf_file)
     Array[File] childDeepTrioGVCF = select_all(trioCall.output_child_gvcf_file)
-    Array[File] child_contig_gvcf_output_list = select_all(flatten([childDeepTrioGVCF, childDeepVarGVCF]))
+    Array[File] child_contig_gvcf_output_list = flatten([childDeepTrioGVCF, childDeepVarGVCF])
     # Merge distributed variant called VCFs
     call concatClippedVCFChunks as concatVCFChunksChild {
         input:
@@ -351,7 +351,7 @@ workflow vgGiraffeDeeptrio {
     }
     Array[File] maDeepVarGVCF = select_all(callDeepVariantCallVariantsMaternal.output_gvcf_file)
     Array[File] maDeepTrioGVCF = select_all(trioCall.output_parent2_gvcf_file)
-    Array[File] maternal_contig_gvcf_output_list = select_all(flatten([maDeepTrioGVCF, maDeepVarGVCF]))
+    Array[File] maternal_contig_gvcf_output_list = flatten([maDeepTrioGVCF, maDeepVarGVCF])
     # Merge distributed variant called VCFs
     call concatClippedVCFChunks as concatVCFChunksMaternal {
         input:
@@ -370,7 +370,7 @@ workflow vgGiraffeDeeptrio {
     }
     Array[File] paDeepVarGVCF = select_all(callDeepVariantCallVariantsPaternal.output_gvcf_file)
     Array[File] paDeepTrioGVCF = select_all(trioCall.output_parent1_gvcf_file)
-    Array[File] paternal_contig_gvcf_output_list = select_all(flatten([paDeepTrioGVCF, paDeepVarGVCF]))
+    Array[File] paternal_contig_gvcf_output_list = flatten([paDeepTrioGVCF, paDeepVarGVCF])
     # Merge distributed variant called VCFs
     call concatClippedVCFChunks as concatVCFChunksPaternal {
         input:
