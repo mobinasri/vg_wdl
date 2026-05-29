@@ -38,7 +38,7 @@ workflow vg_construct_and_index {
         Boolean in_small_resources = false
          
         # regex to use in grep for extracting decoy contig names from reference FASTA
-        String decoy_regex = ">GL\|>NC_007605\|>hs37d5\|>hs38d1_decoys\|>chrEBV\|>chrUn\|>chr\([1-2][1-9]\|[1-9]\|Y\)_"
+        String decoy_regex = ">GL\\|>NC_007605\\|>hs37d5\\|>hs38d1_decoys\\|>chrEBV\\|>chrUn\\|>chr\\([1-2][1-9]\\|[1-9]\\|Y\\)_"
         
         # vg docker image tag
         String vg_docker = "quay.io/vgteam/vg:v1.64.0"
