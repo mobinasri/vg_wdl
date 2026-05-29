@@ -235,7 +235,7 @@ task sortBAM {
         String in_prefix_to_strip = ""
         Int nb_cores = 16
         Int disk_size = 5 * round(size(in_bam_file, "G")) + 20
-        String mem_gb = 16
+        Int mem_gb = 16
     }
 
     String out_prefix = basename(in_bam_file, ".bam")
