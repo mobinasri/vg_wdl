@@ -45,6 +45,7 @@ workflow DeepVariant {
         DV_KEEP_LEGACY_AC: "Should DV use the legacy allele counter behavior? If unspecified this is not done, unless set in the model. Might want to be on for short reads."
         DV_NORM_READS: "Should DV normalize reads itself? If unspecified this is not done, unless set in the model."
         OTHER_MAKEEXAMPLES_ARG: "Additional arguments for the make_examples step of DeepVariant"
+        DV_USE_GPUS: "Should DeepVariant use GPUs for calling variants? Default is 'true'."
         DV_NO_GPU_DOCKER: "Container image to use when running DeepVariant for steps that don't benefit from GPUs. Must be DeepVariant 1.8+."
         DV_GPU_DOCKER: "Container image to use when running DeepVariant for steps that benefit from GPUs. Must be DeepVariant 1.8+."
         BAM_PREPROCESS_MEM: "Memory, in GB, to use when preprocessing BAMs (left-shifting and preparing realignment targets). Default is 20."
@@ -91,6 +92,7 @@ workflow DeepVariant {
         Boolean? DV_KEEP_LEGACY_AC
         Boolean? DV_NORM_READS
         String OTHER_MAKEEXAMPLES_ARG = ""
+        Boolean DV_USE_GPUS = true
         String? DV_NO_GPU_DOCKER
         String? DV_GPU_DOCKER
         Int BAM_PREPROCESS_MEM = 20
@@ -105,7 +107,8 @@ workflow DeepVariant {
     call utils.uncompressReferenceIfNeeded {
         input:
         # We know REFERENCE_FILE is defined but the WDL type system doesn't.
-        in_reference_file=REFERENCE_FILE
+        in_reference_file=REFERENCE_FILE,
+        in_uncompress_cores=CALL_CORES
     }
     File reference_file = uncompressReferenceIfNeeded.reference_file
 
@@ -126,7 +129,9 @@ workflow DeepVariant {
         in_merged_bam_file_index=MERGED_BAM_FILE_INDEX,
         in_path_list_file=PATH_LIST_FILE,
         in_prefix_to_strip=REFERENCE_PREFIX,
-        strip_from_bam=REFERENCE_PREFIX_ON_BAM
+        strip_from_bam=REFERENCE_PREFIX_ON_BAM,
+        thread_count=CALL_CORES,
+        mem_gb=BAM_PREPROCESS_MEM
     }
 
     ##
@@ -156,6 +161,7 @@ workflow DeepVariant {
                 in_reference_index_file=reference_index_file,
                 in_reference_dict_file=reference_dict_file,
                 in_expansion_bases=REALIGNMENT_EXPANSION_BASES,
+                thread_count=CALL_CORES,
                 mem_gb=BAM_PREPROCESS_MEM
             }
             call utils.runAbraRealigner {
@@ -165,6 +171,7 @@ workflow DeepVariant {
                     in_target_bed_file=prepareRealignTargets.output_target_bed_file,
                     in_reference_file=reference_file,
                     in_reference_index_file=reference_index_file,
+                    threadCount=CALL_CORES,
                     memoryGb=REALIGN_MEM
             }
         }
@@ -201,6 +208,7 @@ workflow DeepVariant {
                 in_model_variables_files=DV_MODEL_VARIABLES_FILES,
                 in_haploid_contigs=HAPLOID_CONTIGS,
                 in_par_regions_bed_file=PAR_REGIONS_BED_FILE,
+                in_use_gpus=DV_USE_GPUS,
                 in_dv_gpu_container=DV_GPU_DOCKER,
                 in_call_cores=CALL_CORES,
                 in_call_mem=CALL_MEM
@@ -242,7 +250,9 @@ workflow DeepVariant {
         call utils.mergeAlignmentBAMChunks as mergeBAM {
             input:
             in_sample_name=SAMPLE_NAME,
-            in_alignment_bam_chunk_files=flatten([calling_bam, [splitBAMbyPath.bam_unmapped_file]])
+            in_alignment_bam_chunk_files=flatten([calling_bam, [splitBAMbyPath.bam_unmapped_file]]),
+            in_cores=CALL_CORES,
+            mem_gb=BAM_PREPROCESS_MEM
         }
     }
 
