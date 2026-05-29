@@ -80,7 +80,7 @@ workflow vg_construct_and_index {
     # combine them into a single graph with unique node IDs
     call combine_graphs { input:
         graph_name = graph_name,
-        contigs_vg = select_first([construct_chromosome_graph.contig_vg]),
+        contigs_vg = construct_chromosome_graph.contig_vg,
         decoy_contigs_vg = construct_decoy_graph.contig_vg,
         vg_docker = vg_docker,
         in_small_resources = in_small_resources
@@ -147,7 +147,7 @@ workflow vg_construct_and_index {
                     in_small_resources = in_small_resources
                 }
             }
-            Array[File] concat_pruned_vg_graph_lists = flatten([select_first([prune_graph_with_haplotypes.contigs_pruned_vg,[]]), select_first([prune_decoy_graphs.contig_pruned_vg,[]])]) 
+            Array[File] concat_pruned_vg_graph_lists = flatten([prune_graph_with_haplotypes.contigs_pruned_vg, prune_decoy_graphs.contig_pruned_vg]) 
         }
     }
     

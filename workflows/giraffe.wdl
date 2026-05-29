@@ -212,6 +212,7 @@ workflow Giraffe {
     # We can't actually use None in WDL 1.0 so we need to use a nonexistent null file.
     if (false) {
         Array[File] no_files = []
+        #@ except: UnnecessaryFunctionCall
         File NULL_FILE = select_first(no_files)
     }
     File? file_zipcodes = if length(possible_zipcode_files) > 0 then possible_zipcode_files[0] else NULL_FILE
@@ -444,7 +445,7 @@ workflow Giraffe {
                 call utils.mergeAlignmentBAMChunks as mergeBAM {
                     input:
                     in_sample_name=SAMPLE_NAME,
-                    in_alignment_bam_chunk_files=select_all(flatten([processed_bam, [splitBAMbyPath.bam_unmapped_file]]))
+                    in_alignment_bam_chunk_files=flatten([processed_bam, [splitBAMbyPath.bam_unmapped_file]])
                 }
             }
             
