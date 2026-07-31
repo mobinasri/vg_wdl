@@ -124,6 +124,7 @@ workflow HappyEvaluation {
         in_truth_vcf_index_file=truth_vcf_index,
         in_reference_file=REFERENCE_FILE,
         in_reference_index_file=reference_index_file,
+        in_template_archive=buildReferenceTemplate.output_template_archive,
         in_evaluation_regions_file=EVALUATION_REGIONS_BED,
         in_restrict_regions_file=RESTRICT_REGIONS_BED,
         in_target_region=TARGET_REGION,

@@ -8,6 +8,7 @@ version 1.0
 import "./giraffe.wdl" as GiraffeWorkflow
 import "../tasks/vg_map_hts.wdl" as map
 import "../tasks/bioinfo_utils.wdl" as utils
+import "../tasks/variant_evaluation.wdl" as eval
 
 workflow vgGiraffeDeeptrio {
     meta {
@@ -408,13 +409,13 @@ workflow vgGiraffeDeeptrio {
     if (defined(TRUTH_VCF) && defined(TRUTH_VCF_INDEX)) {
     
         # To evaluate the VCF we need a template of the reference
-        call buildReferenceTemplate {
+        call eval.buildReferenceTemplate as buildReferenceTemplate {
             input:
                 in_reference_file=reference_file
         }
         
         # Direct vcfeval comparison makes an archive with FP and FN VCFs
-        call compareCalls {
+        call eval.compareCalls as compareCalls {
             input:
                 in_sample_vcf_file=bgzipVGCalledChildVCF.output_merged_vcf,
                 in_sample_vcf_index_file=bgzipVGCalledChildVCF.output_merged_vcf_index,
@@ -422,12 +423,13 @@ workflow vgGiraffeDeeptrio {
                 in_truth_vcf_index_file=select_first([TRUTH_VCF_INDEX]),
                 in_template_archive=buildReferenceTemplate.output_template_archive,
                 in_evaluation_regions_file=EVALUATION_REGIONS_BED,
-                in_call_disk=CALL_DISK,
-                in_call_mem=CALL_MEM
+                in_disk=CALL_DISK,
+                in_mem=CALL_MEM,
+                in_cores=32
         }
         
         # Hap.py comparison makes accuracy results stratified by SNPs and indels
-        call compareCallsHappy {
+        call eval.compareCallsHappy as compareCallsHappy {
             input:
                 in_sample_vcf_file=bgzipVGCalledChildVCF.output_merged_vcf,
                 in_sample_vcf_index_file=bgzipVGCalledChildVCF.output_merged_vcf_index,
@@ -436,8 +438,9 @@ workflow vgGiraffeDeeptrio {
                 in_reference_file=reference_file,
                 in_reference_index_file=reference_index_file,
                 in_evaluation_regions_file=EVALUATION_REGIONS_BED,
-                in_call_disk=CALL_DISK,
-                in_call_mem=CALL_MEM
+                in_disk=CALL_DISK,
+                in_mem=CALL_MEM,
+                in_cores=32
         }
     }
     
@@ -596,7 +599,7 @@ task runVGGIRAFFE {
         String in_sample_name
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -646,7 +649,7 @@ task sortBAMFile {
         File in_bam_chunk_file
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -683,7 +686,7 @@ task indexBAMFile {
         String in_sample_name
         File in_bam_file
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -723,7 +726,7 @@ task fixBAMContigNaming {
         String in_prefix_to_strip
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -790,7 +793,7 @@ task mergeAlignmentBAMChunks {
         Array[File] in_alignment_bam_chunk_files
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -833,7 +836,7 @@ task splitBAMbyPath {
         File in_path_list_file
         Int in_map_cores
         Int in_map_disk
-        String in_map_mem
+        Int in_map_mem
     }
 
     command <<<
@@ -1363,124 +1366,6 @@ task bgzipMergedVCF {
         memory: in_call_mem + " GB"
         disks: "local-disk " + in_call_disk + " SSD"
         docker: "quay.io/vgteam/vg:v1.64.0"
-    }
-}
-
-task buildReferenceTemplate {
-    input {
-        File in_reference_file
-    }
-    command <<<
-        set -eux -o pipefail
-    
-        rtg format -o template.sdf "~{in_reference_file}"
-        tar -czf template.sdf.tar.gz template.sdf/
-    >>>
-    output {
-        File output_template_archive = "template.sdf.tar.gz"
-    }
-    runtime {
-        preemptible: 2
-        docker: "realtimegenomics/rtg-tools:3.12.1"
-        memory: 4 + " GB"
-        cpu: 1
-        disks: "local-disk " + 10 + " SSD" 
-    }
-}
-
-task compareCalls {
-    input {
-        File in_sample_vcf_file
-        File in_sample_vcf_index_file
-        File in_truth_vcf_file
-        File in_truth_vcf_index_file
-        File in_template_archive
-        File? in_evaluation_regions_file
-        Int in_call_disk
-        Int in_call_mem
-    }
-    command <<<
-        set -eux -o pipefail
-    
-        # Put sample and truth near their indexes
-        ln -s "~{in_sample_vcf_file}" sample.vcf.gz
-        ln -s "~{in_sample_vcf_index_file}" sample.vcf.gz.tbi
-        ln -s "~{in_truth_vcf_file}" truth.vcf.gz
-        ln -s "~{in_truth_vcf_index_file}" truth.vcf.gz.tbi
-        
-        # Set up template; we assume it drops a "template.sdf"
-        tar -xf "~{in_template_archive}"
-    
-        rtg vcfeval \
-            --baseline truth.vcf.gz \
-            --calls sample.vcf.gz \
-            ~{"--evaluation-regions=" + in_evaluation_regions_file} \
-            --template template.sdf \
-            --threads 32 \
-            --output vcfeval_results
-            
-        tar -czf vcfeval_results.tar.gz vcfeval_results/
-    >>>
-    output {
-        File output_evaluation_archive = "vcfeval_results.tar.gz"
-    }
-    runtime {
-        preemptible: 2
-        docker: "realtimegenomics/rtg-tools:3.12.1"
-        cpu: 32
-        disks: "local-disk " + in_call_disk + " SSD"
-        memory: in_call_mem + " GB"
-    }
-}
-
-task compareCallsHappy {
-    input {
-        File in_sample_vcf_file
-        File in_sample_vcf_index_file
-        File in_truth_vcf_file
-        File in_truth_vcf_index_file
-        File in_reference_file
-        File in_reference_index_file
-        File? in_evaluation_regions_file
-        Int in_call_disk
-        Int in_call_mem
-    }
-    command <<<
-        set -eux -o pipefail
-    
-        # Put sample and truth near their indexes
-        ln -s "~{in_sample_vcf_file}" sample.vcf.gz
-        ln -s "~{in_sample_vcf_index_file}" sample.vcf.gz.tbi
-        ln -s "~{in_truth_vcf_file}" truth.vcf.gz
-        ln -s "~{in_truth_vcf_index_file}" truth.vcf.gz.tbi
-        
-        # Reference and its index must be adjacent and not at arbitrary paths
-        # the runner gives.
-        ln -f -s "~{in_reference_file}" reference.fa
-        ln -f -s "~{in_reference_index_file}" reference.fa.fai
-        
-        mkdir happy_results
-   
-        /opt/hap.py/bin/hap.py \
-            truth.vcf.gz \
-            sample.vcf.gz \
-            ~{"-f " + in_evaluation_regions_file} \
-            --reference reference.fa \
-            --threads 32 \
-            --engine=vcfeval \
-            -o happy_results/eval
-    
-        tar -czf happy_results.tar.gz happy_results/
-    >>>
-    output {
-        File output_evaluation_archive = "happy_results.tar.gz"
-    }
-    runtime {
-        preemptible: 2
-        docker: "jmcdani20/hap.py:v0.3.12"
-        cpu: 32
-        disks: "local-disk " + in_call_disk + " SSD"
-        memory: in_call_mem + " GB"
     }
 }
 

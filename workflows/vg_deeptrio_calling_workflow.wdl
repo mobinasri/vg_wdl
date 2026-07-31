@@ -386,7 +386,7 @@ task splitBAMbyPath {
     
     Int in_cores = if in_small_resources then 2 else 32
     Int in_disk = if in_small_resources then 1 else 100
-    String in_mem = if in_small_resources then "1" else "40"
+    Int in_mem = if in_small_resources then 1 else 40
     
     command <<<
         set -eux -o pipefail
@@ -430,7 +430,7 @@ task runGATKRealignerTargetCreator {
     
     Int in_cores = if in_small_resources then 4 else 32
     Int in_disk = if in_small_resources then 10 else 50
-    String in_mem = if in_small_resources then "10" else "50"
+    Int in_mem = if in_small_resources then 10 else 50
     
     command <<< 
         # Set the exit code of a pipeline to that of the rightmost command 
@@ -487,7 +487,7 @@ task runAbraRealigner {
     
     Int in_cores = if in_small_resources then 4 else 32
     Int in_disk = if in_small_resources then 10 else 50
-    String in_mem = if in_small_resources then "10" else "50"
+    Int in_mem = if in_small_resources then 10 else 50
 
     command <<<
         # Set the exit code of a pipeline to that of the rightmost command
@@ -542,7 +542,7 @@ task runGATKIndelRealigner {
     
     Int in_cores = if in_small_resources then 4 else 32
     Int in_disk = if in_small_resources then 20 else 50
-    String in_mem = if in_small_resources then "20" else "50"
+    Int in_mem = if in_small_resources then 20 else 50
     
     command <<<
         # Set the exit code of a pipeline to that of the rightmost command
@@ -604,7 +604,7 @@ task runDeepVariant {
     
     Int in_call_cores = if in_small_resources then 8 else 8
     Int in_call_disk = if in_small_resources then 2 else 40
-    String in_call_mem = if in_small_resources then "5" else "64"
+    Int in_call_mem = if in_small_resources then 5 else 64
     
     Boolean custom_model = defined(in_model)
     
@@ -682,7 +682,7 @@ task runDeepTrioMakeExamples {
     
     Int in_vgcall_cores = if in_small_resources then 8 else 8
     Int in_vgcall_disk = if in_small_resources then 15 else 80
-    String in_vgcall_mem = if in_small_resources then "15" else "100"
+    Int in_vgcall_mem = if in_small_resources then 15 else 100
 
     command <<<
         # Set the exit code of a pipeline to that of the rightmost command
@@ -763,7 +763,7 @@ task runDeepTrioCallVariants {
     
     Int in_vgcall_cores = if in_small_resources then 8 else 8
     Int in_vgcall_disk = if in_small_resources then 15 else 40
-    String in_vgcall_mem = if in_small_resources then "15" else "64"
+    Int in_vgcall_mem = if in_small_resources then 15 else 64
     
     Boolean custom_model = defined(in_model)
     
@@ -842,7 +842,7 @@ task concatClippedVCFChunks {
     }
     
     Int in_disk = if in_small_resources then 1 else 50
-    String in_mem = if in_small_resources then "1" else "50"
+    Int in_mem = if in_small_resources then 1 else 50
 
     command {
         # Set the exit code of a pipeline to that of the rightmost command
@@ -883,7 +883,7 @@ task bgzipMergedVCF {
     
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 1 else 100
-    String in_mem = if in_small_resources then "1" else "40"
+    Int in_mem = if in_small_resources then 1 else 40
 
     # TODO:
     #   If GVCF in in_merged_vcf_file then output_vcf_extension="gvcf" else output_vcf_extension="vcf"
