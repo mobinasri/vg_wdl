@@ -1,7 +1,7 @@
 version 1.0
 
-import "../tasks/vg_indexing.wdl" as index
-import "./haplotype_sampling.wdl" as hapl
+import "../../tasks/vg_indexing.wdl" as index
+import "../haplotype_sampling.wdl" as hapl
 
 workflow GiraffeIndexes {
     meta {

@@ -21,14 +21,14 @@ for [vg](https://github.com/vgteam/vg) workflows.
       by [DeepVariant](https://github.com/google/deepvariant).
     - [Giraffe-DeepVariant from GAF workflow](#giraffe-deepvariant-from-gaf-workflow) to project reads aligned to a
       pangenome (GAF), prepare them and run [DeepVariant](https://github.com/google/deepvariant).
+    - [DeepVariant workflow](#deepvariant-workflow) to prepare already-mapped reads (BAM) and
+      run [DeepVariant](https://github.com/google/deepvariant) on them.
 - [Happy workflow](#happy-workflow) to evaluate small variants against a truthset
   using [hap.py](https://github.com/Illumina/hap.py)/[vcfeval](https://github.com/RealTimeGenomics/rtg-tools).
 - [Aardvark workflow](#aardvark-workflow) to evaluate small variants against a truthset
   using [Aardvark](https://github.com/PacificBiosciences/aardvark).
 - [Giraffe acceptance test workflow](#giraffe-acceptance-test-workflow) to compare two vg versions, by mapping and
   calling the same sample with each and evaluating both call sets against the same truth set.
-- [Giraffe indexes workflow](#giraffe-indexes-workflow) to build the indexes that `vg giraffe` needs for a graph, once,
-  for reuse across mapping runs.
 - [GAF to sorted GAM workflow](#gaf-to-sorted-gam-workflow) to convert a GAF into a sorted and indexed GAM. E.g. to use
   with the [sequenceTubeMap](https://github.com/vgteam/sequenceTubeMap).
 - [Giraffe SV workflow](#Giraffe-SV-workflow) to map short reads to a pangenome and genotype SVs
@@ -39,6 +39,9 @@ for [vg](https://github.com/vgteam/vg) workflows.
   DeepVariant and GATK (legacy?).
 - [Map-call Pedigree workflow](#Map-call-Pedigree-workflow) to map reads and call variants in a pedigree
   with [vg](https://github.com/vgteam/vg) (legacy?).
+
+The workflows above call [internal subworkflows](#internal-subworkflows) for the steps they share. Those are not meant
+to be run on their own.
 
 See also the [Going further](#Going-further) section for more details on some aspects and HOW-TOs:
 
@@ -57,7 +60,7 @@ See also the [Going further](#Going-further) section for more details on some as
 The full workflow to go from sequencing reads (FASTQs, CRAM) to small variant calls (VCF).
 
 - workflow file: [workflows/giraffe_and_deepvariant.wdl](workflows/giraffe_and_deepvariant.wdl)
-- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/GiraffeDeepVariant:gbz?tab=info)
+- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/GiraffeDeepVariant:master?tab=info)
 - If you use this workflow, please cite [the HPRC preprint](#cite-HPRC).
 
 Parameters (semi-auto-generated from the parameter_meta section):
@@ -153,7 +156,7 @@ Reads are mapped to a pangenome with [vg giraffe](https://github.com/vgteam/vg) 
 realignment).
 
 - workflow file: [workflows/giraffe.wdl](workflows/giraffe.wdl)
-- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/Giraffe:gbz?tab=info)
+- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/Giraffe:master?tab=info)
 - If you use this workflow, please cite [the HPRC preprint](#cite-HPRC).
 
 Parameters (semi-auto-generated from the parameter_meta section):
@@ -233,7 +236,7 @@ Surject a GAF and prepare the BAMs (e.g. fix names, indel realign), and call sma
 with [DeepVariant](https://github.com/google/deepvariant).
 
 - workflow file: [workflows/giraffe_and_deepvariant_fromGAF.wdl](workflows/giraffe_and_deepvariant_fromGAF.wdl)
-- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:gbz?tab=info)
+- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:master?tab=info)
 - If you use this workflow, please cite [the HPRC preprint](#cite-HPRC).
 
 Parameters (semi-auto-generated from the parameter_meta section):
@@ -293,7 +296,7 @@ miniwdl run --as-me workflows/giraffe_and_deepvariant_fromGAF.wdl -i params/gira
 Evaluation of the small variant calls using [hap.py](https://github.com/Illumina/hap.py).
 
 - workflow file: [workflows/happy_evaluation.wdl](workflows/happy_evaluation.wdl)
-- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/HappyEvaluation:gbz?tab=info)
+- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/HappyEvaluation:master?tab=info)
 
 Parameters (semi-auto-generated from the parameter_meta section):
 
@@ -316,6 +319,62 @@ Parameters (semi-auto-generated from the parameter_meta section):
 ```sh
 miniwdl run --as-me workflows/happy_evaluation.wdl -i params/happy_evaluation.json
 ```
+
+### DeepVariant workflow
+
+Partial workflow to go from mapped reads (BAM) to small variant calls (VCF). Reads are pre-processed (e.g. indel
+realignment). DeepVariant then calls small variants. Includes optional comparison to a truth set. This is the calling
+half of the [Giraffe-DeepVariant workflow](#giraffe-deepvariant-workflow), for when the reads are already mapped.
+
+- workflow file: [workflows/deepvariant.wdl](workflows/deepvariant.wdl)
+- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/DeepVariant:master?tab=info)
+
+Parameters (semi-auto-generated from the parameter_meta section):
+
+- *MERGED_BAM_FILE*: The all-contigs sorted BAM to call with.
+- *MERGED_BAM_FILE_INDEX*: The .bai index for the input BAM file
+- *SAMPLE_NAME*: The sample name
+- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.
+- *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.
+- *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
+- *CONTIGS*: Contig path names to use as PATH_LIST_FILE. Must be set if PATH_LIST_FILE is not.
+- *PATH_LIST_FILE*: Text file where each line is a contig name to evaluate on. Must be set if CONTIGS is not.
+- *REFERENCE_PREFIX*: Remove this off the beginning of path names to get contig names in the BAM (set to match prefix in PATH_LIST_FILE)
+- *REFERENCE_PREFIX_ON_BAM*: If true, the REFERENCE_PREFIX is also on the sequence names in the BAM header and needs to be removed.
+- *REFERENCE_FILE*: FASTA reference to call against.
+- *REFERENCE_INDEX_FILE*: (OPTIONAL) If specified, use this .fai index instead of indexing the reference file.
+- *REFERENCE_DICT_FILE*: (OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths.
+- *HAPLOID_CONTIGS*: (OPTIONAL) Names of contigs in the reference (without REFERENCE_PREFIX) that are haploid in this sample (often chrX and chrY). Not compatible with DeepVariant 1.5.
+- *PAR_REGIONS_BED_FILE*: (OPTIONAL) BED file with pseudo-autosomal regions. Not compatible with DeepVariant 1.5.
+- *LEFTALIGN_BAM*: Whether or not to left-align reads in the BAM. Default is 'true'. If true, all input reads, including secondaries, must have the read sequence given.
+- *REALIGN_INDELS*: Whether or not to realign reads near indels. Default is 'true'. If true, all input reads must be in a read group.
+- *REALIGNMENT_EXPANSION_BASES*: Number of bases to expand indel realignment targets by on either side, to free up read tails in slippery regions. Default is 160.
+- *MIN_MAPQ*: Minimum MAPQ of reads to use for calling. 4 is the lowest at which a mapping is more likely to be right than wrong. Default is the DeepVariant default for the model type.
+- *TRUTH_VCF*: Path to .vcf.gz to compare against
+- *TRUTH_VCF_INDEX*: Path to Tabix index for TRUTH_VCF
+- *EVALUATION_REGIONS_BED*: BED to evaluate against TRUTH_VCF on, where false positives will be counted
+- *RESTRICT_REGIONS_BED*: BED to restrict comparison against TRUTH_VCF to
+- *TARGET_REGION*: contig or region to restrict evaluation to
+- *RUN_STANDALONE_VCFEVAL*: whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)
+- *DV_MODEL_TYPE*: Type of DeepVariant model to use. Can be WGS (default), WES, PACBIO, ONT_R104, or HYBRID_PACBIO_ILLUMINA.
+- *DV_MODEL_META*: .meta file for a custom DeepVariant calling model
+- *DV_MODEL_INDEX*: .index file for a custom DeepVariant calling model
+- *DV_MODEL_DATA*: .data-00000-of-00001 file for a custom DeepVariant calling model
+- *DV_MODEL_FILES*: Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format
+- *DV_MODEL_VARIABLES_FILES*: Array of files that need to go in a 'variables' subdirectory for a DV model
+- *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? If unspecified this is not done, unless set in the model. Might want to be on for short reads.
+- *DV_NORM_READS*: Should DV normalize reads itself? If unspecified this is not done, unless set in the model.
+- *OTHER_MAKEEXAMPLES_ARG*: Additional arguments for the make_examples step of DeepVariant
+- *DV_USE_GPUS*: Should DeepVariant use GPUs for calling variants? Default is 'true'.
+- *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs. Must be DeepVariant 1.8+.
+- *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs. Must be DeepVariant 1.8+.
+- *BAM_PREPROCESS_MEM*: Memory, in GB, to use when preprocessing BAMs (left-shifting and preparing realignment targets). Default is 20.
+- *REALIGN_MEM*: Memory, in GB, to use for Abra indel realignment. Default is 40.
+- *CALL_CORES*: Number of cores to use when calling variants. Default is 8.
+- *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.
+- *MAKE_EXAMPLES_CORES*: Number of cores to use when making DeepVariant examples. Default is CALL_CORES.
+- *MAKE_EXAMPLES_MEM*: Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM.
+- *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 60.
 
 ### Aardvark workflow
 
@@ -459,42 +518,6 @@ topics: [read realignment](#Read-realignment), [reference prefix removal](#Refer
 miniwdl run --as-me workflows/giraffe_acceptance_test.wdl -i params/giraffe_acceptance_test.json
 ```
 
-### Giraffe indexes workflow
-
-Produce the set of indexes that `vg giraffe` needs for one graph: a GBZ and the matching distance, minimizer and
-zipcodes indexes. Indexes that are passed in are used as they are, and the rest are built with the given vg container.
-When haplotype sampling is on, the graph is replaced by a sample-specific sampled graph and all of the mapping indexes
-are rebuilt for it, so the reads to sample from are required.
-
-This is the same index preparation that the [Giraffe workflow](#giraffe-workflow) does internally. It exists separately
-so that one set of indexes can be built and then reused across several mapping runs, as the
-[Giraffe acceptance test workflow](#giraffe-acceptance-test-workflow) does.
-
-- workflow file: [workflows/giraffe_indexes.wdl](workflows/giraffe_indexes.wdl)
-
-Parameters (semi-auto-generated from the parameter_meta section):
-
-- *GBZ_FILE*: Path to .gbz index file
-- *DIST_FILE*: (OPTIONAL) Path to .dist index file. Built if not provided.
-- *MIN_FILE*: (OPTIONAL) Path to .min index file. Built if not provided, along with a new .zipcodes file.
-- *ZIPCODES_FILE*: (OPTIONAL) Path to .zipcodes index file matching MIN_FILE. Ignored unless MIN_FILE is also provided.
-- *HAPL_FILE*: (OPTIONAL) Path to .hapl file used in haplotype sampling
-- *R_INDEX_FILE*: (OPTIONAL) Path to .ri file used in haplotype sampling
-- *KFF_FILE*: (OPTIONAL) Path to .kff file of sample kmer counts used in haplotype sampling
-- *HAPLOTYPE_SAMPLING*: Whether to haplotype sample the graph down to the sample's haplotypes. Default is 'true'.
-- *INPUT_READ_FILE_FIRST*: Reads to count kmers in for haplotype sampling. Required if HAPLOTYPE_SAMPLING is true and KFF_FILE is not given.
-- *INPUT_READ_FILE_SECOND*: (OPTIONAL) Second read pair file to count kmers in for haplotype sampling.
-- *GIRAFFE_PRESET*: Name of the Giraffe mapper parameter preset the indexes are for (default, fast, hifi, or r10). This sets the minimizer size and window size.
-- *HAPLOTYPE_NUMBER*: Number of generated synthetic haplotypes used in haplotype sampling. (Default: 32)
-- *DIPLOID*: Whether to use diploid sampling while doing haplotype sampling. (Default: true)
-- *SET_REFERENCE*: (OPTIONAL) Name of the single reference to keep for haplotype sampling.
-- *INDEX_MINIMIZER_WEIGHTED*: Whether to use weighted minimizer indexing. (Default: true)
-- *INDEX_MINIMIZER_MEM*: Memory, in GB, to use when making the minimizer index. (Default: 320 if weighted, 120 otherwise)
-- *KMER_COUNTING_MEM*: Memory, in GB, to use when counting kmers. (Default: 64)
-- *HAPLOTYPE_INDEXING_MEM*: Memory, in GB, to use for indexing tasks (distance index, r-index, haplotype index, and sampling). (Default: 120)
-- *CORES*: Number of cores to use for indexing. (Default: 16)
-- *VG_DOCKER*: Container image to use when running vg
-
 ### GAF to sorted GAM workflow
 
 Currently, only GAM file can be sorted and indexed, for example to extract and subgraph and visualize, or use with
@@ -502,7 +525,7 @@ the [sequenceTubeMap](https://github.com/vgteam/sequenceTubeMap).
 This workflow converts reads aligned to a pangenome in a GAF file to a sorted and indexed GAM file.
 
 - workflow file: [workflows/sort_graph_aligned_reads.wdl](workflows/sort_graph_aligned_reads.wdl)
-- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/sortGraphAlignedReads:gbz?tab=info)
+- [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/sortGraphAlignedReads:master?tab=info)
 
 Parameters (semi-auto-generated from the parameter_meta section):
 
@@ -580,6 +603,22 @@ miniwdl run --as-me workflows/haplotype_sampling.wdl -i params/haplotype_samplin
 - workflow file: [workflows/vg_trio_multi_map_call.wdl](workflows/vg_trio_multi_map_call.wdl)
 - parameter file: [params/vg_trio_multi_map_call.inputs_tiny.json](params/vg_trio_multi_map_call.inputs_tiny.json)
 - If you use this workflow, please cite the [Pedigree-VG article](#Cite-Pedigree-VG).
+
+### Internal subworkflows
+
+[workflows/internal/](workflows/internal) holds subworkflows that exist only to be called by the workflows above. They
+are steps that several workflows need to do the same way, pulled out so there is one copy of each, and they are not
+meant to be run on their own. Their parameters are documented in their own `parameter_meta` sections rather than here,
+and they can change without notice.
+
+- [workflows/internal/prepare_reads.wdl](workflows/internal/prepare_reads.wdl) (`PrepareReads`): get a sample's reads as
+  FASTQ, converting a CRAM or a BAM if that is what arrived.
+- [workflows/internal/prepare_reference.wdl](workflows/internal/prepare_reference.wdl) (`PrepareReference`): work out
+  which contigs to work on and get a FASTA reference for them, with its `.fai` and `.dict`, extracting them from the
+  graph if they weren't provided.
+- [workflows/internal/giraffe_indexes.wdl](workflows/internal/giraffe_indexes.wdl) (`GiraffeIndexes`): produce the GBZ,
+  distance, minimizer and zipcodes indexes `vg giraffe` needs, building whatever wasn't provided and haplotype sampling
+  the graph if asked.
 
 ### Going further
 
@@ -814,10 +853,12 @@ Continuous integration runs `miniwdl check` on every workflow, and separately ru
 python3 scripts/lint_wdl_docs.py
 ```
 
-which checks that every workflow input is described in the workflow's `parameter_meta` section and listed in this
-README, and that the example inputs in [params/](params) only set inputs that still exist. Files that have never
-satisfied this are listed in [scripts/doc_lint_exemptions.txt](scripts/doc_lint_exemptions.txt); new workflows are
-expected not to need an entry there.
+which checks that every workflow input is described in the workflow's `parameter_meta` section, that every workflow
+meant to be run has a section in this README listing all of its parameters, and that the example inputs
+in [params/](params) only set inputs that still exist. [Internal subworkflows](#internal-subworkflows) still need
+`parameter_meta`, but are not expected to have a README section. Files that have never satisfied any of this are listed
+in [scripts/doc_lint_exemptions.txt](scripts/doc_lint_exemptions.txt); new workflows are expected not to need an entry
+there.
 
 ## Citation
 

@@ -7,7 +7,7 @@ workflow HappyEvaluation {
     meta {
 	    author: "Jean Monlong"
         email: "jmonlong@ucsc.edu"
-        description: "Evaluate small variants using hap.py. More information at [https://github.com/vgteam/vg_wdl/tree/gbz#happy-workflow](https://github.com/vgteam/vg_wdl/tree/gbz#happy-workflow)."
+        description: "Evaluate small variants using hap.py. More information at [https://github.com/vgteam/vg_wdl/tree/master#happy-workflow](https://github.com/vgteam/vg_wdl/tree/master#happy-workflow)."
     }
 
     parameter_meta {

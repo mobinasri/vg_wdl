@@ -7,7 +7,7 @@ import "happy_evaluation.wdl" as happy
 workflow DeepVariant {
 
     meta {
-        description: "## DeepVariant workflow \n Partial workflow to go from mapped reads (BAM) to small variant calls (VCF). Reads are pre-processed (e.g. indel realignment). DeepVariant then calls small variants. Includes optional comparison to a truth set."
+        description: "## DeepVariant workflow \n Partial workflow to go from mapped reads (BAM) to small variant calls (VCF). Reads are pre-processed (e.g. indel realignment). DeepVariant then calls small variants. Includes optional comparison to a truth set. More information at [https://github.com/vgteam/vg_wdl/tree/master#deepvariant-workflow](https://github.com/vgteam/vg_wdl/tree/master#deepvariant-workflow)."
     }
 
     parameter_meta {

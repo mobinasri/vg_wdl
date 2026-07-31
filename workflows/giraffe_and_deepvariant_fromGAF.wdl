@@ -7,7 +7,7 @@ import "../tasks/deepvariant.wdl" as dv
 
 workflow GiraffeDeepVariantFromGAF {
     meta {
-        description: "## Giraffe-DeepVariant-fromGAF workflow \n Surject a GAF and call small variants with DeepVariant. More information at [https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-deepvariant-from-gaf-workflow](https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-deepvariant-from-gaf-workflow)."
+        description: "## Giraffe-DeepVariant-fromGAF workflow \n Surject a GAF and call small variants with DeepVariant. More information at [https://github.com/vgteam/vg_wdl/tree/master#giraffe-deepvariant-from-gaf-workflow](https://github.com/vgteam/vg_wdl/tree/master#giraffe-deepvariant-from-gaf-workflow)."
     }
 
     parameter_meta {

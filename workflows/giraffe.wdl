@@ -5,10 +5,12 @@ import "../tasks/bioinfo_utils.wdl" as utils
 import "../tasks/gam_gaf_utils.wdl" as gautils
 import "../tasks/vg_map_hts.wdl" as map
 import "./haplotype_sampling.wdl" as hapl
+import "./internal/prepare_reads.wdl" as reads_wf
+import "./internal/prepare_reference.wdl" as reference_wf
 
 workflow Giraffe {
     meta {
-        description: "## Giraffe workflow \n Core VG Giraffe mapping, usable for DeepVariant. Reads are mapped to a pangenome with vg giraffe and pre-processed (e.g. indel realignment). More information at [https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-workflow](https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-workflow)."
+        description: "## Giraffe workflow \n Core VG Giraffe mapping, usable for DeepVariant. Reads are mapped to a pangenome with vg giraffe and pre-processed (e.g. indel realignment). More information at [https://github.com/vgteam/vg_wdl/tree/master#giraffe-workflow](https://github.com/vgteam/vg_wdl/tree/master#giraffe-workflow)."
     }
     parameter_meta {
         INPUT_READ_FILE_1: "Input sample 1st read pair fastq.gz or fastq"
@@ -152,33 +154,24 @@ workflow Giraffe {
     }
 
 
-    if(defined(INPUT_CRAM_FILE) && defined(CRAM_REF) && defined(CRAM_REF_INDEX)) {
-	    call utils.convertCRAMtoFASTQ {
-            input:
-            in_cram_file=INPUT_CRAM_FILE,
-            in_ref_file=CRAM_REF,
-            in_ref_index_file=CRAM_REF_INDEX,
-            in_paired_reads=PAIRED_READS,
-            in_cores=SPLIT_READ_CORES,
-            in_memory=SPLIT_READ_MEM
-	    }
+    # Get the reads as FASTQ, whatever container they came in.
+    call reads_wf.PrepareReads {
+        input:
+        INPUT_READ_FILE_1=INPUT_READ_FILE_1,
+        INPUT_READ_FILE_2=INPUT_READ_FILE_2,
+        INPUT_CRAM_FILE=INPUT_CRAM_FILE,
+        CRAM_REF=CRAM_REF,
+        CRAM_REF_INDEX=CRAM_REF_INDEX,
+        INPUT_BAM_FILE=INPUT_BAM_FILE,
+        PAIRED_READS=PAIRED_READS,
+        INTERLEAVED_READS=INTERLEAVED_READS,
+        SPLIT_READ_CORES=SPLIT_READ_CORES,
+        SPLIT_READ_MEM=SPLIT_READ_MEM
     }
-
-    if(defined(INPUT_BAM_FILE)) {
-	    call utils.convertBAMtoFASTQ {
-            input:
-            in_bam_file=INPUT_BAM_FILE,
-            in_paired_reads=PAIRED_READS,
-            in_cores=SPLIT_READ_CORES,
-            in_memory=SPLIT_READ_MEM
-	    }
-    }
-
-    File read_1_file = select_first([INPUT_READ_FILE_1, convertCRAMtoFASTQ.output_fastq_1_file, convertBAMtoFASTQ.output_fastq_1_file])
-    if(PAIRED_READS && !INTERLEAVED_READS){
-        # We also need the second read in the pair, if paired, for hap sampling.
-        File read_2_file = select_first([INPUT_READ_FILE_2, convertCRAMtoFASTQ.output_fastq_2_file, convertBAMtoFASTQ.output_fastq_2_file])
-    }
+    File read_1_file = PrepareReads.read_1_file
+    # Null unless there is a separate mate file, which hap sampling and the
+    # paired mapping path both need.
+    File? read_2_file = PrepareReads.read_2_file
 
     if (HAPLOTYPE_SAMPLING) {
         call hapl.HaplotypeSampling {
@@ -186,7 +179,7 @@ workflow Giraffe {
             GBZ_FILE=GBZ_FILE,
             INPUT_READ_FILE_FIRST=read_1_file,
             # If we're not doing paired reads the result here is probably null.
-            INPUT_READ_FILE_SECOND=if PAIRED_READS && !INTERLEAVED_READS then read_2_file else INPUT_READ_FILE_2,
+            INPUT_READ_FILE_SECOND=read_2_file,
             HAPL_FILE=HAPL_FILE,
             DIST_FILE=DIST_FILE,
             R_INDEX_FILE=R_INDEX_FILE,
@@ -230,57 +223,26 @@ workflow Giraffe {
             in_split_read_cores=SPLIT_READ_CORES
     }
     
-    # Which path names to work on?
-    if (!defined(CONTIGS)) {
-        if (!defined(PATH_LIST_FILE)) {
-            # Extract path names to call against from GBZ file if PATH_LIST_FILE input not provided
-            # Filter down to major paths, because GRCh38 includes thousands of
-            # decoys and unplaced/unlocalized contigs, and we can't efficiently
-            # scatter across them, nor do we care about accuracy on them, and also
-            # calling on the decoys is semantically meaningless.
-            call map.extractSubsetPathNames {
-                input:
-                    in_gbz_file=file_gbz,
-                    in_reference_prefix=REFERENCE_PREFIX,
-                    in_extract_mem=MAP_MEM,
-                    vg_docker=VG_DOCKER
-            }
-            
-            if (REFERENCE_PREFIX != "") {
-                call validation.checkPathList as checkExtractedPathList {
-                    input:
-                        in_path_list_file=extractSubsetPathNames.output_path_list_file,
-                        in_reference_prefix=REFERENCE_PREFIX
-                }
-            }
-        }
-    } 
-    File pipeline_path_list_file = select_first([PATH_LIST_FILE, extractSubsetPathNames.output_path_list_file, written_path_names_file])
+    # Which path names to work on, and what reference to surject against? These
+    # come from the graph we are actually mapping to, which is the sampled one
+    # if we sampled.
+    call reference_wf.PrepareReference {
+        input:
+        GBZ_FILE=file_gbz,
+        CONTIGS=CONTIGS,
+        PATH_LIST_FILE=PATH_LIST_FILE,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=REFERENCE_FILE,
+        REFERENCE_INDEX_FILE=REFERENCE_INDEX_FILE,
+        REFERENCE_DICT_FILE=REFERENCE_DICT_FILE,
+        EXTRACT_MEM=MAP_MEM,
+        VG_DOCKER=VG_DOCKER
+    }
+    File pipeline_path_list_file = PrepareReference.path_list_file
+    File reference_file = PrepareReference.reference_file
+    File reference_index_file = PrepareReference.reference_index_file
+    File reference_dict_file = PrepareReference.reference_dict_file
 
-    # To make sure that we have a FASTA reference with a contig set that
-    # exactly matches the graph (except for removing the name prefix), we
-    # generate it ourselves, from the graph.
-    if (!defined(REFERENCE_FILE)) {
-        call map.extractReference {
-            input:
-            in_gbz_file=file_gbz,
-            in_path_list_file=pipeline_path_list_file,
-            in_prefix_to_strip=REFERENCE_PREFIX,
-            in_extract_mem=MAP_MEM,
-            vg_docker=VG_DOCKER
-        }
-    }
-    File reference_file = select_first([REFERENCE_FILE, extractReference.reference_file])
-    
-    if (!defined(REFERENCE_INDEX_FILE)) {
-        call utils.indexReference {
-            input:
-                in_reference_file=reference_file
-        }
-    }
-    File reference_index_file = select_first([REFERENCE_INDEX_FILE, indexReference.reference_index_file])
-    File reference_dict_file = select_first([REFERENCE_DICT_FILE, indexReference.reference_dict_file])
-    
     ################################################################
     # Distribute vg mapping operation over each chunked read pair #
     ################################################################

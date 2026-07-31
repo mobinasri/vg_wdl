@@ -2,15 +2,16 @@ version 1.0
 
 import "../tasks/aardvark_evaluation.wdl" as aardvark_tasks
 import "../tasks/bioinfo_utils.wdl" as utils
-import "../tasks/vg_map_hts.wdl" as map
 import "./aardvark_evaluation.wdl" as aardvark_wf
 import "./giraffe_and_deepvariant.wdl" as gd_wf
-import "./giraffe_indexes.wdl" as index_wf
+import "./internal/giraffe_indexes.wdl" as index_wf
+import "./internal/prepare_reads.wdl" as reads_wf
+import "./internal/prepare_reference.wdl" as reference_wf
 
 workflow GiraffeAcceptanceTest {
 
     meta {
-        description: "## Giraffe acceptance test workflow \n Map one sample twice with two different vg containers, call variants on each mapping with DeepVariant, and evaluate both call sets against the same truth set with [Aardvark](https://github.com/PacificBiosciences/aardvark), to see what changing vg does to variant calling accuracy. One run is the baseline and one is the candidate; they differ only in the vg container, so anything the two runs can share is computed once and handed to both. That includes the reads (a CRAM is converted to FASTQ once), the reference and contig list, and, unless CANDIDATE_SEPARATE_INDEXES is set, the Giraffe indexes. Set CANDIDATE_SEPARATE_INDEXES when the candidate vg needs indexes the baseline vg cannot write, and either pass the candidate's indexes in the CANDIDATE_* inputs or let them be built with the candidate container."
+        description: "## Giraffe acceptance test workflow \n Map one sample twice with two different vg containers, call variants on each mapping with DeepVariant, and evaluate both call sets against the same truth set with [Aardvark](https://github.com/PacificBiosciences/aardvark), to see what changing vg does to variant calling accuracy. One run is the baseline and one is the candidate; they differ only in the vg container, so anything the two runs can share is computed once and handed to both. That includes the reads (a CRAM is converted to FASTQ once), the reference and contig list, and, unless CANDIDATE_SEPARATE_INDEXES is set, the Giraffe indexes. Set CANDIDATE_SEPARATE_INDEXES when the candidate vg needs indexes the baseline vg cannot write, and either pass the candidate's indexes in the CANDIDATE_* inputs or let them be built with the candidate container. More information at [https://github.com/vgteam/vg_wdl/tree/master#giraffe-acceptance-test-workflow](https://github.com/vgteam/vg_wdl/tree/master#giraffe-acceptance-test-workflow)."
     }
 
     parameter_meta {
@@ -191,78 +192,37 @@ workflow GiraffeAcceptanceTest {
 
     # Both runs have to see exactly the same reads, so a CRAM is converted once
     # up front instead of once inside each run.
-    if (defined(INPUT_CRAM_FILE) && defined(CRAM_REF) && defined(CRAM_REF_INDEX)) {
-        call utils.convertCRAMtoFASTQ {
-            input:
-            in_cram_file=INPUT_CRAM_FILE,
-            in_ref_file=CRAM_REF,
-            in_ref_index_file=CRAM_REF_INDEX,
-            in_paired_reads=PAIRED_READS,
-            in_cores=SPLIT_READ_CORES,
-            in_memory=SPLIT_READ_MEM
-        }
+    call reads_wf.PrepareReads {
+        input:
+        INPUT_READ_FILE_1=INPUT_READ_FILE_1,
+        INPUT_READ_FILE_2=INPUT_READ_FILE_2,
+        INPUT_CRAM_FILE=INPUT_CRAM_FILE,
+        CRAM_REF=CRAM_REF,
+        CRAM_REF_INDEX=CRAM_REF_INDEX,
+        PAIRED_READS=PAIRED_READS,
+        INTERLEAVED_READS=INTERLEAVED_READS,
+        SPLIT_READ_CORES=SPLIT_READ_CORES,
+        SPLIT_READ_MEM=SPLIT_READ_MEM
     }
-    File read_1_file = select_first([INPUT_READ_FILE_1, convertCRAMtoFASTQ.output_fastq_1_file])
-    if (PAIRED_READS && !INTERLEAVED_READS) {
-        File read_2_file = select_first([INPUT_READ_FILE_2, convertCRAMtoFASTQ.output_fastq_2_file])
-    }
-    # Interleaved reads live entirely in the first file, so there is no second
-    # file to pass on in that case.
-    File? second_read_file = if PAIRED_READS && !INTERLEAVED_READS then read_2_file else INPUT_READ_FILE_2
 
     # The contig set and the reference come from the graph as given, before any
     # haplotype sampling, and are shared by both runs and by the evaluation.
     # Sharing them is what makes the two call sets comparable at all: they have
-    # to be called on the same contigs against the same reference bases.
-    if (!defined(CONTIGS)) {
-        if (!defined(PATH_LIST_FILE)) {
-            # Filter down to major paths, because GRCh38 includes thousands of
-            # decoys and unplaced/unlocalized contigs, and we can't efficiently
-            # scatter across them, nor do we care about accuracy on them, and also
-            # calling on the decoys is semantically meaningless.
-            call map.extractSubsetPathNames {
-                input:
-                    in_gbz_file=GBZ_FILE,
-                    in_reference_prefix=REFERENCE_PREFIX,
-                    in_extract_mem=MAP_MEM,
-                    vg_docker=BASELINE_VG_DOCKER
-            }
-        }
+    # to be called on the same contigs against the same reference bases. The
+    # baseline vg extracts them, since with shared indexes it is the version
+    # that made everything else too.
+    call reference_wf.PrepareReference {
+        input:
+        GBZ_FILE=GBZ_FILE,
+        CONTIGS=CONTIGS,
+        PATH_LIST_FILE=PATH_LIST_FILE,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=REFERENCE_FILE,
+        REFERENCE_INDEX_FILE=REFERENCE_INDEX_FILE,
+        REFERENCE_DICT_FILE=REFERENCE_DICT_FILE,
+        EXTRACT_MEM=MAP_MEM,
+        VG_DOCKER=BASELINE_VG_DOCKER
     }
-    if (defined(CONTIGS)) {
-        # We know the value is defined, but WDL is a bit low on unboxing calls
-        # for optionals, so we use select_first.
-        File written_path_names_file = write_lines(select_first([CONTIGS]))
-    }
-    File pipeline_path_list_file = select_first([PATH_LIST_FILE, extractSubsetPathNames.output_path_list_file, written_path_names_file])
-
-    if (!defined(REFERENCE_FILE)) {
-        call map.extractReference {
-            input:
-            in_gbz_file=GBZ_FILE,
-            in_path_list_file=pipeline_path_list_file,
-            in_prefix_to_strip=REFERENCE_PREFIX,
-            in_extract_mem=MAP_MEM,
-            vg_docker=BASELINE_VG_DOCKER
-        }
-    }
-    if (defined(REFERENCE_FILE)) {
-        call utils.uncompressReferenceIfNeeded {
-            input:
-            # We know REFERENCE_FILE is defined but the WDL type system doesn't.
-            in_reference_file=select_first([REFERENCE_FILE])
-        }
-    }
-    File reference_file = select_first([uncompressReferenceIfNeeded.reference_file, extractReference.reference_file])
-
-    if (!defined(REFERENCE_INDEX_FILE) || !defined(REFERENCE_DICT_FILE)) {
-        call utils.indexReference {
-            input:
-                in_reference_file=reference_file
-        }
-    }
-    File reference_index_file = select_first([REFERENCE_INDEX_FILE, indexReference.reference_index_file])
-    File reference_dict_file = select_first([REFERENCE_DICT_FILE, indexReference.reference_dict_file])
 
     # Both evaluations, and hap.py if it is running, need the truth set indexed.
     if (!defined(TRUTH_VCF_INDEX)) {
@@ -293,8 +253,8 @@ workflow GiraffeAcceptanceTest {
         ZIPCODES_FILE=ZIPCODES_FILE,
         HAPL_FILE=HAPL_FILE,
         HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
-        INPUT_READ_FILE_FIRST=read_1_file,
-        INPUT_READ_FILE_SECOND=second_read_file,
+        INPUT_READ_FILE_FIRST=PrepareReads.read_1_file,
+        INPUT_READ_FILE_SECOND=PrepareReads.read_2_file,
         GIRAFFE_PRESET=GIRAFFE_PRESET,
         INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
         INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
@@ -315,8 +275,8 @@ workflow GiraffeAcceptanceTest {
             ZIPCODES_FILE=CANDIDATE_ZIPCODES_FILE,
             HAPL_FILE=CANDIDATE_HAPL_FILE,
             HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
-            INPUT_READ_FILE_FIRST=read_1_file,
-            INPUT_READ_FILE_SECOND=second_read_file,
+            INPUT_READ_FILE_FIRST=PrepareReads.read_1_file,
+            INPUT_READ_FILE_SECOND=PrepareReads.read_2_file,
             GIRAFFE_PRESET=GIRAFFE_PRESET,
             INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
             INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
@@ -340,8 +300,8 @@ workflow GiraffeAcceptanceTest {
 
     call gd_wf.GiraffeDeepVariant as baselineRun {
         input:
-        INPUT_READ_FILE_1=read_1_file,
-        INPUT_READ_FILE_2=second_read_file,
+        INPUT_READ_FILE_1=PrepareReads.read_1_file,
+        INPUT_READ_FILE_2=PrepareReads.read_2_file,
         GBZ_FILE=baselineIndexes.gbz_file,
         DIST_FILE=baselineIndexes.dist_file,
         MIN_FILE=baselineIndexes.min_file,
@@ -353,11 +313,11 @@ workflow GiraffeAcceptanceTest {
         PAIRED_READS=PAIRED_READS,
         INTERLEAVED_READS=INTERLEAVED_READS,
         READS_PER_CHUNK=READS_PER_CHUNK,
-        PATH_LIST_FILE=pipeline_path_list_file,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
         REFERENCE_PREFIX=REFERENCE_PREFIX,
-        REFERENCE_FILE=reference_file,
-        REFERENCE_INDEX_FILE=reference_index_file,
-        REFERENCE_DICT_FILE=reference_dict_file,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
         HAPLOID_CONTIGS=HAPLOID_CONTIGS,
         PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
         PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
@@ -406,8 +366,8 @@ workflow GiraffeAcceptanceTest {
 
     call gd_wf.GiraffeDeepVariant as candidateRun {
         input:
-        INPUT_READ_FILE_1=read_1_file,
-        INPUT_READ_FILE_2=second_read_file,
+        INPUT_READ_FILE_1=PrepareReads.read_1_file,
+        INPUT_READ_FILE_2=PrepareReads.read_2_file,
         GBZ_FILE=candidate_gbz_file,
         DIST_FILE=candidate_dist_file,
         MIN_FILE=candidate_min_file,
@@ -419,11 +379,11 @@ workflow GiraffeAcceptanceTest {
         PAIRED_READS=PAIRED_READS,
         INTERLEAVED_READS=INTERLEAVED_READS,
         READS_PER_CHUNK=READS_PER_CHUNK,
-        PATH_LIST_FILE=pipeline_path_list_file,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
         REFERENCE_PREFIX=REFERENCE_PREFIX,
-        REFERENCE_FILE=reference_file,
-        REFERENCE_INDEX_FILE=reference_index_file,
-        REFERENCE_DICT_FILE=reference_dict_file,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
         HAPLOID_CONTIGS=HAPLOID_CONTIGS,
         PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
         PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
@@ -479,8 +439,8 @@ workflow GiraffeAcceptanceTest {
         QUERY_VCF_INDEX=baselineRun.output_vcf_index,
         TRUTH_VCF=TRUTH_VCF,
         TRUTH_VCF_INDEX=truth_vcf_index,
-        REFERENCE_FILE=reference_file,
-        REFERENCE_INDEX_FILE=reference_index_file,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
         REGIONS_BED=EVALUATION_REGIONS_BED,
         STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
         SAMPLE_NAME=SAMPLE_NAME + ".baseline",
@@ -494,8 +454,8 @@ workflow GiraffeAcceptanceTest {
         QUERY_VCF_INDEX=candidateRun.output_vcf_index,
         TRUTH_VCF=TRUTH_VCF,
         TRUTH_VCF_INDEX=truth_vcf_index,
-        REFERENCE_FILE=reference_file,
-        REFERENCE_INDEX_FILE=reference_index_file,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
         REGIONS_BED=EVALUATION_REGIONS_BED,
         STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
         SAMPLE_NAME=SAMPLE_NAME + ".candidate",

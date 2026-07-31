@@ -23,6 +23,10 @@ import WDL
 
 # Where each kind of file lives, relative to the repository root.
 WORKFLOW_DIR = "workflows"
+# Subworkflows that exist only to be called by other workflows. They are held to
+# the parameter_meta rules like anything else, but they are plumbing, so the
+# README describes them in a sentence instead of documenting their parameters.
+INTERNAL_DIR = os.path.join("workflows", "internal")
 TASK_DIR = "tasks"
 PARAMS_DIR = "params"
 README = "README.md"
@@ -66,19 +70,30 @@ def read_exemptions(path):
     return exempt
 
 
+def find_wdls(directory):
+    """
+    Return the paths of every .wdl file at or below a directory, sorted. This
+    picks up workflows/internal, where the subworkflows that exist only to be
+    called by other workflows live.
+    """
+
+    found = []
+    for parent, _, names in os.walk(directory):
+        found += [os.path.join(parent, n) for n in names if n.endswith(".wdl")]
+    return sorted(found)
+
+
 def load_documents(directory):
     """
-    Parse every .wdl file in a directory. Returns a list of (path, document).
+    Parse every .wdl file at or below a directory. Returns a list of
+    (path, document).
 
     Files that don't parse are skipped: making sense of them is ``miniwdl
     check``'s job, and it runs alongside this.
     """
 
     documents = []
-    for name in sorted(os.listdir(directory)):
-        if not name.endswith(".wdl"):
-            continue
-        path = os.path.join(directory, name)
+    for path in find_wdls(directory):
         try:
             documents.append((path, WDL.load(path)))
         except Exception as e:
@@ -133,15 +148,15 @@ def read_readme_sections(path):
 
 def readme_section_for(sections, workflow_path):
     """
-    Find the README section that documents a workflow, by looking for a link to
-    the workflow's file. Returns (heading, body_lines), or None if no section
-    claims the workflow.
+    Find the README section that documents a workflow, by looking for the
+    workflow's path anywhere in the section. That covers a relative link, an
+    absolute github.com link, and a `miniwdl run` example alike. Returns
+    (heading, body_lines), or None if no section mentions the workflow.
     """
 
-    needle = "(" + workflow_path + ")"
     for heading, body in sections:
         for line in body:
-            if needle in line:
+            if workflow_path in line:
                 return (heading, body)
     return None
 
@@ -164,13 +179,20 @@ def check_parameter_meta(problems, path, workflow):
 
 def check_readme(problems, path, workflow, sections):
     """
-    Check the README section for a workflow, if it has one, against the
-    workflow's inputs. Workflows with no section are left alone; a lot of the
-    older ones have never had one.
+    Check a workflow's README section against its inputs.
+
+    A workflow that users are meant to run has to have a section, and that
+    section has to list every parameter. Internal subworkflows are skipped: the
+    README mentions them, but making callers read a parameter list for plumbing
+    they never invoke would be noise.
     """
+
+    if path.startswith(INTERNAL_DIR + os.sep):
+        return
 
     section = readme_section_for(sections, path)
     if section is None:
+        problems.report(path, "has no section in {} that mentions it".format(README))
         return
     heading, body = section
 

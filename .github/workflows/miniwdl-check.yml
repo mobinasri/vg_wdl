@@ -28,7 +28,7 @@ jobs:
       - name: Run miniwdl check on all workflows
         run: |
           set -e
-          for wdl_file in workflows/*.wdl; do
+          for wdl_file in $(find workflows -name '*.wdl' | sort); do
             echo "Checking $wdl_file..."
             miniwdl check "$wdl_file"
           done

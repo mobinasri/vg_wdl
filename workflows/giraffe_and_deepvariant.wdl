@@ -1,15 +1,14 @@
 version 1.0
 
-import "../tasks/bioinfo_utils.wdl" as utils
-import "../tasks/vg_map_hts.wdl" as map
 import "./deepvariant.wdl" as dv_wf
 import "./giraffe.wdl" as giraffe_wf
+import "./internal/prepare_reference.wdl" as reference_wf
 
 
 workflow GiraffeDeepVariant {
 
     meta {
-        description: "## Giraffe-DeepVariant workflow \n The full workflow to go from sequencing reads (FASTQs, CRAM) to small variant calls (VCF). Reads are mapped to a pangenome with vg giraffe and pre-processed (e.g. indel realignment). DeepVariant then calls small variants. More information at [https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-deepvariant-workflow](https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-deepvariant-workflow)."
+        description: "## Giraffe-DeepVariant workflow \n The full workflow to go from sequencing reads (FASTQs, CRAM) to small variant calls (VCF). Reads are mapped to a pangenome with vg giraffe and pre-processed (e.g. indel realignment). DeepVariant then calls small variants. More information at [https://github.com/vgteam/vg_wdl/tree/master#giraffe-deepvariant-workflow](https://github.com/vgteam/vg_wdl/tree/master#giraffe-deepvariant-workflow)."
     }
 
     parameter_meta {
@@ -161,60 +160,25 @@ workflow GiraffeDeepVariant {
 
     }
 
-    # Which path names to work on?
-    if (!defined(CONTIGS)) {
-        if (!defined(PATH_LIST_FILE)) {
-            # Extract path names to call against from GBZ file if PATH_LIST_FILE input not provided
-            # Filter down to major paths, because GRCh38 includes thousands of
-            # decoys and unplaced/unlocalized contigs, and we can't efficiently
-            # scatter across them, nor do we care about accuracy on them, and also
-            # calling on the decoys is semantically meaningless.
-            call map.extractSubsetPathNames {
-                input:
-                    in_gbz_file=GBZ_FILE,
-                    in_reference_prefix=REFERENCE_PREFIX,
-                    in_extract_mem=MAP_MEM,
-                    vg_docker=VG_DOCKER
-            }
-        }
-    } 
-    if (defined(CONTIGS)) {
-        # Put the paths in a file to use later. We know the value is defined,
-        # but WDL is a bit low on unboxing calls for optionals so we use
-        # select_first.
-        File written_path_names_file = write_lines(select_first([CONTIGS]))
+    # Work out which path names to work on, and get a FASTA reference for them
+    # whose contigs match the graph's paths. Both the mapping and the calling
+    # need these, so they are settled here and passed to both.
+    call reference_wf.PrepareReference {
+        input:
+        GBZ_FILE=GBZ_FILE,
+        CONTIGS=CONTIGS,
+        PATH_LIST_FILE=PATH_LIST_FILE,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=REFERENCE_FILE,
+        REFERENCE_INDEX_FILE=REFERENCE_INDEX_FILE,
+        REFERENCE_DICT_FILE=REFERENCE_DICT_FILE,
+        EXTRACT_MEM=MAP_MEM,
+        VG_DOCKER=VG_DOCKER
     }
-    File pipeline_path_list_file = select_first([PATH_LIST_FILE, extractSubsetPathNames.output_path_list_file, written_path_names_file])
-    
-    # To make sure that we have a FASTA reference with a contig set that
-    # exactly matches the graph, we generate it ourselves, from the graph.
-    if (!defined(REFERENCE_FILE)) {
-        call map.extractReference {
-            input:
-            in_gbz_file=GBZ_FILE,
-            in_path_list_file=pipeline_path_list_file,
-            in_prefix_to_strip=REFERENCE_PREFIX,
-            in_extract_mem=MAP_MEM,
-            vg_docker=VG_DOCKER
-        }
-    }
-    if (defined(REFERENCE_FILE)) {
-        call utils.uncompressReferenceIfNeeded {
-            input:
-            # We know REFERENCE_FILE is defined but the WDL type system doesn't.
-            in_reference_file=select_first([REFERENCE_FILE]),
-        }
-    }
-    File reference_file = select_first([uncompressReferenceIfNeeded.reference_file, extractReference.reference_file])
-    
-    if (!defined(REFERENCE_INDEX_FILE) || !defined(REFERENCE_DICT_FILE)) {
-        call utils.indexReference {
-            input:
-                in_reference_file=reference_file
-        }
-    }
-    File reference_index_file = select_first([REFERENCE_INDEX_FILE, indexReference.reference_index_file])
-    File reference_dict_file = select_first([REFERENCE_DICT_FILE, indexReference.reference_dict_file])
+    File pipeline_path_list_file = PrepareReference.path_list_file
+    File reference_file = PrepareReference.reference_file
+    File reference_index_file = PrepareReference.reference_index_file
+    File reference_dict_file = PrepareReference.reference_dict_file
 
     # Run the giraffe mapping workflow.
     # We don't do postprocessing in the Giraffe workflow, just the DV workflow.
