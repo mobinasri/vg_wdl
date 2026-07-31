@@ -82,6 +82,7 @@ workflow HaplotypeSampling {
             call index.createDistanceIndex {
                 input:
                     in_gbz_file=GBZ_FILE,
+                    nb_cores=CORES,
                     in_extract_mem=HAPLOTYPE_INDEXING_MEM,
                     options=CREATE_INDEX_OPTIONS_BEFORE_SAMPLING,
                     vg_docker=VG_DOCKER
@@ -159,6 +160,7 @@ workflow HaplotypeSampling {
         call index.createDistanceIndex as giraffeDist {
                     input:
                         in_gbz_file=samplingHaplotypes.output_graph,
+                        nb_cores=CORES,
                         in_extract_mem=HAPLOTYPE_INDEXING_MEM,
                         vg_docker=VG_DOCKER
         }

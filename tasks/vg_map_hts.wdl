@@ -34,6 +34,7 @@ task runVGGIRAFFE {
     input {
         File fastq_file_1
         File? fastq_file_2
+        Boolean in_interleaved = false
         File in_gbz_file
         File in_dist_file
         File in_min_file
@@ -42,13 +43,13 @@ task runVGGIRAFFE {
         String in_giraffe_options
         String in_sample_name
         Int nb_cores = 16
-        String mem_gb = 120
+        Int mem_gb = 120
         Int disk_size = 3 * round(size(fastq_file_1, 'G') + size(fastq_file_2, 'G') + size(in_gbz_file, 'G') + size(in_dist_file, 'G') + size(in_min_file, 'G') + size(in_zipcodes_file, 'G')) + 50
         String vg_docker = "quay.io/vgteam/vg:v1.64.0"
     }
 
     String out_prefix = sub(sub(sub(basename(fastq_file_1), "\\.gz$", ""), "\\.fastq$", ""), "\\.fq$", "")
-    Boolean paired_reads = defined(fastq_file_2)
+    Boolean paired_fastq = defined(fastq_file_2)
     command <<<
         # Set the exit code of a pipeline to that of the rightmost command
         # to exit with a non-zero status, or zero if all commands of the pipeline exit
@@ -62,7 +63,10 @@ task runVGGIRAFFE {
         #to turn off echo do 'set +o xtrace'
 
         PAIR_ARGS=""
-        if [ ~{paired_reads} == true ]
+        if [ ~{in_interleaved} == true ]
+        then
+            PAIR_ARGS="-i"
+        elif [ ~{paired_fastq} == true ]
         then
             PAIR_ARGS="-f ~{fastq_file_2}"
         fi
@@ -115,18 +119,24 @@ task extractSubsetPathNames {
             if [[ ! -z "~{in_reference_prefix}" ]] ; then
                 # Pull only the paths that actually have this prefix.
                 # Leave the prefix on.
-                grep "~{in_reference_prefix}" raw_path_list.txt | sort > path_list.txt
+                grep "~{in_reference_prefix}" raw_path_list.txt > path_list.txt
             else
                 # Keep all the paths.
-                sort raw_path_list.txt > path_list.txt
+                cat raw_path_list.txt > path_list.txt
             fi
         else
             # Couldn't get reference paths. This is probably an old GBZ that predates them.
             # Pull all contig names and assume they are paths also.
-            vg gbwt -CL -Z ~{in_gbz_file} | sort > path_list.txt
+            vg gbwt -CL -Z ~{in_gbz_file} > path_list.txt
         fi
 
-        grep -v _decoy path_list.txt | grep -v _random |  grep -v chrUn_ | grep -v chrEBV | grep -v chrM | grep -v chain_ > path_list.sub.txt
+        # If paths with []-enclosed subranges at the end exist, remove the
+        # subranges, because base-path names are what will come out of
+        # surjection.
+        # Also make sure to use a sensible order for digit runs (-V)
+        cat path_list.txt | sed 's/\[[0-9][0-9]*\(-[0-9][0-9]*\)\?\]$//g' | sort -V | uniq >path_list.base.txt
+
+        grep -v _decoy path_list.base.txt | grep -v _random |  grep -v chrUn_ | grep -v chrEBV | grep -v chrM | grep -v chain_ > path_list.sub.txt
 
         if [[ "$(wc -l path_list.sub.txt | cut -f1 -d" ")" == "0" ]] ; then
             echo >&2 "Error: could not find any paths!"

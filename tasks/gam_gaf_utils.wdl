@@ -181,7 +181,7 @@ task surjectGAFtoSortedBAM {
         Boolean make_bam_index = false
         Boolean input_is_gam = false
         Int nb_cores = 16
-        String mem_gb = 120
+        Int mem_gb = 120
         Int disk_size = 5 * round(size(in_gbz_file, 'G') + size(in_gaf_file, 'G')) + 50
         String vg_docker = "quay.io/vgteam/vg:v1.64.0"
     }
@@ -249,7 +249,7 @@ task surjectGAFtoBAM {
         Int in_max_fragment_length = 3000
         Boolean input_is_gam = false
         Int nb_cores = 16
-        String mem_gb = 120
+        Int mem_gb = 120
         Int disk_size = 5 * round(size(in_gbz_file, 'G') + size(in_gaf_file, 'G')) + 50
         String vg_docker = "quay.io/vgteam/vg:v1.64.0"
     }

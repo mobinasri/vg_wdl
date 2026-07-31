@@ -38,7 +38,7 @@ workflow vg_construct_and_index {
         Boolean in_small_resources = false
          
         # regex to use in grep for extracting decoy contig names from reference FASTA
-        String decoy_regex = ">GL\|>NC_007605\|>hs37d5\|>hs38d1_decoys\|>chrEBV\|>chrUn\|>chr\([1-2][1-9]\|[1-9]\|Y\)_"
+        String decoy_regex = ">GL\\|>NC_007605\\|>hs37d5\\|>hs38d1_decoys\\|>chrEBV\\|>chrUn\\|>chr\\([1-2][1-9]\\|[1-9]\\|Y\\)_"
         
         # vg docker image tag
         String vg_docker = "quay.io/vgteam/vg:v1.64.0"
@@ -80,7 +80,7 @@ workflow vg_construct_and_index {
     # combine them into a single graph with unique node IDs
     call combine_graphs { input:
         graph_name = graph_name,
-        contigs_vg = select_first([construct_chromosome_graph.contig_vg]),
+        contigs_vg = construct_chromosome_graph.contig_vg,
         decoy_contigs_vg = construct_decoy_graph.contig_vg,
         vg_docker = vg_docker,
         in_small_resources = in_small_resources
@@ -147,7 +147,7 @@ workflow vg_construct_and_index {
                     in_small_resources = in_small_resources
                 }
             }
-            Array[File] concat_pruned_vg_graph_lists = flatten([select_first([prune_graph_with_haplotypes.contigs_pruned_vg,[]]), select_first([prune_decoy_graphs.contig_pruned_vg,[]])]) 
+            Array[File] concat_pruned_vg_graph_lists = flatten([prune_graph_with_haplotypes.contigs_pruned_vg, prune_decoy_graphs.contig_pruned_vg]) 
         }
     }
     
@@ -225,7 +225,7 @@ task extract_decoys {
         Boolean in_small_resources
     }
 
-    String in_mem = if in_small_resources then "1" else "5"
+    Int in_mem = if in_small_resources then 1 else 5
 
     command <<<
         set -exu -o pipefail
@@ -258,7 +258,7 @@ task construct_graph {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 20 else 20
-    String in_mem = if in_small_resources then "20" else "50"
+    Int in_mem = if in_small_resources then 20 else 50
  
     Boolean use_vcf = defined(vcf_gz)
     
@@ -329,7 +329,7 @@ task combine_graphs {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 2 else 50
-    String in_mem = if in_small_resources then "20" else "40"
+    Int in_mem = if in_small_resources then 20 else 40
     
     Boolean decoy_contigs_exist = defined(decoy_contigs_vg)
     Array[File] decoy_contigs_vg_resolved = select_first([decoy_contigs_vg, []])
@@ -395,7 +395,7 @@ task gbwt_index {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 5 else 20
-    String in_mem = if in_small_resources then "5" else "50"
+    Int in_mem = if in_small_resources then 5 else 50
 
     command <<<
         set -exu -o pipefail
@@ -430,7 +430,7 @@ task gbwt_merge {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 2 else 10
-    String in_mem = if in_small_resources then "5" else "50"
+    Int in_mem = if in_small_resources then 5 else 50
 
     command {
         set -exu -o pipefail
@@ -462,7 +462,7 @@ task snarls_index {
 
     Int in_cores = if in_small_resources then 1 else 1
     Int in_disk = if in_small_resources then 1 else 100
-    String in_mem = if in_small_resources then "10" else "120"
+    Int in_mem = if in_small_resources then 10 else 120
     
     command {
         set -exu -o pipefail
@@ -522,7 +522,7 @@ task xg_index {
 
     Int in_cores = if in_small_resources then 8 else 16
     Int in_disk = if in_small_resources then 2 else 60
-    String in_mem = if in_small_resources then "20" else "60"
+    Int in_mem = if in_small_resources then 20 else 60
 
     command <<<
         set -exu -o pipefail
@@ -555,7 +555,7 @@ task dist_index {
 
     Int in_cores = if in_small_resources then 2 else 4
     Int in_disk = if in_small_resources then 2 else 50
-    String in_mem = if in_small_resources then "10" else "100"
+    Int in_mem = if in_small_resources then 10 else 100
     
     command <<<
         set -exu -o pipefail
@@ -586,7 +586,7 @@ task sampled_gbwt_index {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 20 else 80
-    String in_mem = if in_small_resources then "20" else "80"
+    Int in_mem = if in_small_resources then 20 else 80
     
     command <<<
         set -exu -o pipefail
@@ -619,7 +619,7 @@ task min_index {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 4 else 100
-    String in_mem = if in_small_resources then "5" else "80"
+    Int in_mem = if in_small_resources then 5 else 80
     
     command <<<
         set -exu -o pipefail
@@ -649,7 +649,7 @@ task prune_graph {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 1 else 10
-    String in_mem = if in_small_resources then "10" else "20"
+    Int in_mem = if in_small_resources then 10 else 20
 
     command {
         set -exu -o pipefail
@@ -684,7 +684,7 @@ task prune_graph_with_haplotypes {
 
     Int in_cores = if in_small_resources then 2 else 2
     Int in_disk = if in_small_resources then 4 else 50
-    String in_mem = if in_small_resources then "5" else "20"
+    Int in_mem = if in_small_resources then 5 else 20
 
     command <<<
         set -exu -o pipefail
@@ -728,7 +728,7 @@ task gcsa_index {
 
     Int in_cores = if in_small_resources then 8 else 32
     Int in_disk = if in_small_resources then 4 else 50
-    String in_mem = if in_small_resources then "4" else "250"
+    Int in_mem = if in_small_resources then 4 else 250
 
     command <<<
         set -exu -o pipefail

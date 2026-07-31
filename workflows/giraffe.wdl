@@ -26,6 +26,7 @@ workflow Giraffe {
         OUTPUT_CALLING_BAMS: "Should individual contig BAMs be saved? Default is 'false'."
         OUTPUT_GAF: "Should a GAF file with the aligned reads be saved? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
+        INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
         READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
         PATH_LIST_FILE: "(OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths. If using REFERENCE_PREFIX, contig names in here should have the prefix."
         CONTIGS: "(OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index. If using REFERENCE_PREFIX, contig names in here should have the prefix."
@@ -79,6 +80,7 @@ workflow Giraffe {
         Boolean OUTPUT_CALLING_BAMS = false
         Boolean OUTPUT_GAF = false
         Boolean PAIRED_READS = true
+        Boolean INTERLEAVED_READS = false
         Int READS_PER_CHUNK = 20000000
         File? PATH_LIST_FILE
         Array[String]+? CONTIGS
@@ -176,7 +178,7 @@ workflow Giraffe {
     }
 
     File read_1_file = select_first([INPUT_READ_FILE_1, convertCRAMtoFASTQ.output_fastq_1_file, convertBAMtoFASTQ.output_fastq_1_file])
-    if(PAIRED_READS){
+    if(PAIRED_READS && !INTERLEAVED_READS){
         # We also need the second read in the pair, if paired, for hap sampling.
         File read_2_file = select_first([INPUT_READ_FILE_2, convertCRAMtoFASTQ.output_fastq_2_file, convertBAMtoFASTQ.output_fastq_2_file])
     }
@@ -187,7 +189,7 @@ workflow Giraffe {
             GBZ_FILE=GBZ_FILE,
             INPUT_READ_FILE_FIRST=read_1_file,
             # If we're not doing paired reads the result here is probably null.
-            INPUT_READ_FILE_SECOND=if PAIRED_READS then read_2_file else INPUT_READ_FILE_2,
+            INPUT_READ_FILE_SECOND=if PAIRED_READS && !INTERLEAVED_READS then read_2_file else INPUT_READ_FILE_2,
             HAPL_FILE=HAPL_FILE,
             DIST_FILE=DIST_FILE,
             R_INDEX_FILE=R_INDEX_FILE,
@@ -217,6 +219,7 @@ workflow Giraffe {
     # We can't actually use None in WDL 1.0 so we need to use a nonexistent null file.
     if (false) {
         Array[File] no_files = []
+        #@ except: UnnecessaryFunctionCall
         File NULL_FILE = select_first(no_files)
     }
     File? file_zipcodes = if length(possible_zipcode_files) > 0 then possible_zipcode_files[0] else NULL_FILE
@@ -286,7 +289,7 @@ workflow Giraffe {
     ################################################################
     # Distribute vg mapping operation over each chunked read pair #
     ################################################################
-    if(PAIRED_READS){
+    if(PAIRED_READS && !INTERLEAVED_READS){
         call utils.splitReads as secondReadPair {
             input:
             in_read_file=select_first([read_2_file]),
@@ -296,7 +299,7 @@ workflow Giraffe {
         }
         Array[Pair[File,File]] read_pair_chunk_files_list = zip(firstReadPair.output_read_chunks, secondReadPair.output_read_chunks)
         scatter (read_pair_chunk_files in read_pair_chunk_files_list) {
-            call map.runVGGIRAFFE as runVGGIRAFFEpe {
+            call map.runVGGIRAFFE as runVGGIRAFFE2file {
                 input:
                 fastq_file_1=read_pair_chunk_files.left,
                 fastq_file_2=read_pair_chunk_files.right,
@@ -323,11 +326,13 @@ workflow Giraffe {
             }
         }
     }
-    if (!PAIRED_READS) {
+    # TODO: invent else
+    if (!(PAIRED_READS && !INTERLEAVED_READS)) {
         scatter (read_pair_chunk_file in firstReadPair.output_read_chunks) {
-            call map.runVGGIRAFFE as runVGGIRAFFEse {
+            call map.runVGGIRAFFE as runVGGIRAFFE1file {
                 input:
                 fastq_file_1=read_pair_chunk_file,
+                in_interleaved=INTERLEAVED_READS,
                 in_preset=GIRAFFE_PRESET,
                 in_giraffe_options=GIRAFFE_OPTIONS,
                 in_gbz_file=file_gbz,
@@ -352,7 +357,7 @@ workflow Giraffe {
         }
     }
 
-    Array[File] gaf_chunks = select_first([runVGGIRAFFEpe.chunk_gaf_file, runVGGIRAFFEse.chunk_gaf_file])
+    Array[File] gaf_chunks = select_first([runVGGIRAFFE2file.chunk_gaf_file, runVGGIRAFFE1file.chunk_gaf_file])
     
     if (OUTPUT_SINGLE_BAM || OUTPUT_CALLING_BAMS) {
         # We are outputting BAM so surjection is needed
@@ -367,6 +372,7 @@ workflow Giraffe {
                 in_max_fragment_length=MAX_FRAGMENT_LENGTH,
                 in_paired_reads=PAIRED_READS,
                 in_prune_low_complexity=PRUNE_LOW_COMPLEXITY,
+                nb_cores=MAP_CORES,
                 mem_gb=MAP_MEM,
                 vg_docker=select_first([VG_SURJECT_DOCKER, VG_DOCKER])
             }
@@ -375,7 +381,9 @@ workflow Giraffe {
                 input:
                 in_bam_file=surjectGAFtoBAM.output_bam_file,
                 in_ref_dict=reference_dict_file,
-                in_prefix_to_strip=REFERENCE_PREFIX
+                in_prefix_to_strip=REFERENCE_PREFIX,
+                nb_cores=MAP_CORES,
+                mem_gb=BAM_PREPROCESS_MEM
             }
         }
         
@@ -383,7 +391,9 @@ workflow Giraffe {
         call utils.mergeAlignmentBAMChunks {
             input:
             in_sample_name=SAMPLE_NAME,
-            in_alignment_bam_chunk_files=sortBAM.sorted_bam
+            in_alignment_bam_chunk_files=sortBAM.sorted_bam,
+            in_cores=MAP_CORES,
+            mem_gb=BAM_PREPROCESS_MEM
         }
 
         if (OUTPUT_CALLING_BAMS || LEFTALIGN_BAM || REALIGN_INDELS) {
@@ -398,6 +408,7 @@ workflow Giraffe {
                 in_merged_bam_file_index=mergeAlignmentBAMChunks.merged_bam_file_index,
                 in_path_list_file=pipeline_path_list_file,
                 in_prefix_to_strip=REFERENCE_PREFIX,
+                thread_count=SPLIT_READ_CORES,
                 mem_gb=SPLIT_READ_MEM
             }
 
@@ -428,6 +439,7 @@ workflow Giraffe {
                         in_reference_index_file=reference_index_file,
                         in_reference_dict_file=reference_dict_file,
                         in_expansion_bases=REALIGNMENT_EXPANSION_BASES,
+                        thread_count=MAP_CORES,
                         mem_gb=BAM_PREPROCESS_MEM
                     }
                     call utils.runAbraRealigner {
@@ -437,6 +449,7 @@ workflow Giraffe {
                             in_target_bed_file=prepareRealignTargets.output_target_bed_file,
                             in_reference_file=reference_file,
                             in_reference_index_file=reference_index_file,
+                            threadCount=MAP_CORES,
                             memoryGb=REALIGN_MEM
                     }
                 }
@@ -449,7 +462,9 @@ workflow Giraffe {
                 call utils.mergeAlignmentBAMChunks as mergeBAM {
                     input:
                     in_sample_name=SAMPLE_NAME,
-                    in_alignment_bam_chunk_files=select_all(flatten([processed_bam, [splitBAMbyPath.bam_unmapped_file]]))
+                    in_alignment_bam_chunk_files=flatten([processed_bam, [splitBAMbyPath.bam_unmapped_file]]),
+                    in_cores=SPLIT_READ_CORES,
+                    mem_gb=SPLIT_READ_MEM
                 }
             }
             

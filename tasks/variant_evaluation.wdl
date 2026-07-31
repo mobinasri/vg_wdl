@@ -6,6 +6,9 @@ task buildReferenceTemplate {
     }
     command <<<
         set -eux -o pipefail
+
+        # This is 90% of 4 GB in MiB
+        export RTG_MEM="3433M"
     
         rtg format -o template.sdf "~{in_reference_file}"
         tar -czf template.sdf.tar.gz template.sdf/
@@ -36,8 +39,21 @@ task compareCalls {
         Int in_mem = 16
         Int in_cores = 8
     }
+    # Get a memory limit of almost all the memory, for RTG.
+    # For some reason it has stopped being able to measure the available memory
+    # itself on some runners.
+    Int rtg_mem_gb_sub = in_mem - 2
+    # The RTG default is 90% of the available memory. See
+    # https://github.com/RealTimeGenomics/rtg-tools/blob/f72c7991210776631b2ee36b8038a64b45deb6da/installer/rtg#L91-L92
+    Int rtg_mem_gb_div = in_mem * 100 / 90
+    Int rtg_mem_gb = if rtg_mem_gb_sub > rtg_mem_gb_div then rtg_mem_gb_sub else rtg_mem_gb_div
+    # We assume RTG is using binary units
+    Int rtg_mem_mb = rtg_mem_gb * 1000
+    Int rtg_mem_mib = rtg_mem_mb * (1000 * 1000) / (1024 * 1024)
     command <<<
         set -eux -o pipefail
+
+        export RTG_MEM="~{rtg_mem_mib}M"
     
         # Put sample and truth near their indexes
         ln -s "~{in_sample_vcf_file}" sample.vcf.gz
@@ -89,8 +105,22 @@ task compareCallsHappy {
         Int in_mem = 32
         Int in_cores = 8
     }
+    # Get a memory limit of almost all the memory, for RTG.
+    # For some reason it has stopped being able to measure the available memory
+    # itself on some runners.
+    Int rtg_mem_gb_sub = in_mem - 2
+    # The RTG default is 90% of the available memory. See
+    # https://github.com/RealTimeGenomics/rtg-tools/blob/f72c7991210776631b2ee36b8038a64b45deb6da/installer/rtg#L91-L92
+    Int rtg_mem_gb_div = in_mem * 100 / 90
+    Int rtg_mem_gb = if rtg_mem_gb_sub > rtg_mem_gb_div then rtg_mem_gb_sub else rtg_mem_gb_div
+    # We assume RTG is using binary units
+    Int rtg_mem_mb = rtg_mem_gb * 1000
+    Int rtg_mem_mib = rtg_mem_mb * (1000 * 1000) / (1024 * 1024)
+    # TODO: If WDL could do functions we dould deduplicate this code
     command <<<
         set -eux -o pipefail
+
+        export RTG_MEM="~{rtg_mem_mib}M"
         
         TEMPLATE_ARGS=()
         if [ ~{defined(in_template_archive)} == true ]; then

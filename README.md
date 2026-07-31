@@ -42,6 +42,7 @@ See also the [Going further](#Going-further) section for more details on some as
 - [Reference prefix removal](#Reference-prefix-removal)
 - [CRAM input](#CRAM-input)
 - [Single-end reads](#Single-end-reads)
+- [Interleaved reads](#Interleaved-reads)
 - [Unmapped reads](#Unmapped-reads)
 - [Reads chunking](#Reads-chunking)
 
@@ -69,8 +70,9 @@ Parameters (semi-auto-generated from the parameter_meta section):
 - *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved? Default is 'true'.  
 - *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.  
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.  
-- *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.  
-- *PAIRED_READS*: Are the reads paired? Default is 'true'.  
+- *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
+- *PAIRED_READS*: Are the reads paired? Default is 'true'.
+- *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
 - *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20,000,000.  
 - *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index.  
 - *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.  
@@ -100,17 +102,22 @@ Parameters (semi-auto-generated from the parameter_meta section):
 - *DV_MODEL_DATA*: .data-00000-of-00001 file for a custom DeepVariant calling model  
 - *DV_MODEL_FILES*: Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format  
 - *DV_MODEL_VARIABLES_FILES*: Array of files that need to go in a 'variables' subdirectory for a DV model  
-- *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? Default is 'true'. Should be 'false' for HiFi.  
-- *DV_NORM_READS*: Should DV normalize reads itself? Default is 'false'. Should be 'true' for HiFi.  
-- *OTHER_MAKEEXAMPLES_ARG*: Additional arguments for the make_examples step of DeepVariant  
-- *DV_IS_1_7_OR_NEWER*: Flag to use DeepVariant 1.7+ command line syntax and recommended flags. Must be true if providing a DV 1.7+ Docker image, and false if providing an older one.  
-- *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs  
+- *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? Default is 'true'. Should be 'false' for HiFi.
+- *DV_NORM_READS*: Should DV normalize reads itself? Default is 'false'. Should be 'true' for HiFi.
+- *OTHER_MAKEEXAMPLES_ARG*: Additional arguments for the make_examples step of DeepVariant
+- *DV_USE_GPUS*: Should DeepVariant use GPUs for calling variants? Default is 'true'.
+- *DV_IS_1_7_OR_NEWER*: Flag to use DeepVariant 1.7+ command line syntax and recommended flags. Must be true if providing a DV 1.7+ Docker image, and false if providing an older one.
+- *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs
 - *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs  
 - *SPLIT_READ_CORES*: Number of cores to use when splitting the reads into chunks. Default is 8.
 - *SPLIT_READ_MEM*: Memory, in GB, to use when splitting the reads into chunks. Default is 50.
 - *MAP_CORES*: Number of cores to use when mapping the reads. Default is 16.
 - *MAP_MEM*: Memory, in GB, to use when mapping the reads. Default is 120.
 - *HAPLOTYPE_SAMPLING*: Whether or not to use haplotype sampling before running giraffe. Default is 'true'.
+- *INDEX_MINIMIZER_WEIGHTED*: Whether to use weighted minimizer indexing with haplotype sampling. (Default: true)
+- *INDEX_MINIMIZER_MEM*: Memory, in GB, to use when making the minimizer index. (Default: 320 if weighted, 120 otherwise)
+- *KMER_COUNTING_MEM*: Memory, in GB, to use when counting kmers. (Default: 64)
+- *HAPLOTYPE_INDEXING_MEM*: Memory, in GB, to use for haplotype sampling indexing tasks (distance index, r-index, haplotype index, sampling, and giraffe distance index). (Default: 120)
 - *BAM_PREPROCESS_MEM*: Memory, in GB, to use when preprocessing BAMs (left-shifting and preparing realignment targets). Default is 20.
 - *REALIGN_MEM*: Memory, in GB, to use for Abra indel realignment. Default is 40 or MAP_MEM, whichever is lower.
 - *CALL_CORES*: Number of cores to use when calling variants. Default is 8.  
@@ -122,7 +129,7 @@ Parameters (semi-auto-generated from the parameter_meta section):
 
 
 Related
-topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [CRAM input](#CRAM-input), [reads chunking](#Reads-chunking), [path list](#Path-list), [single-end reads](#Single-end-reads), [unmapped reads](#Unmapped-reads), [HPRC pangenomes](#HPRC-pangenomes).
+topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [CRAM input](#CRAM-input), [reads chunking](#Reads-chunking), [path list](#Path-list), [single-end reads](#Single-end-reads), [interleaved reads](#Interleaved-reads), [unmapped reads](#Unmapped-reads), [HPRC pangenomes](#HPRC-pangenomes).
 
 [Test locally](#testing-locally) with:
 
@@ -158,6 +165,7 @@ Parameters (semi-auto-generated from the parameter_meta section):
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs be saved? Default is 'false'.
 - *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved? Default is 'false'.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
+- *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
 - *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 000 000.
 - *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If
   neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.
@@ -248,7 +256,7 @@ Parameters (semi-auto-generated from the parameter_meta section):
 - *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.
 
 Related
-topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [path list](#Path-list), [single-end reads](#Single-end-reads), [unmapped reads](#Unmapped-reads), [HPRC pangenomes](#HPRC-pangenomes).
+topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [path list](#Path-list), [single-end reads](#Single-end-reads), [interleaved reads](#Interleaved-reads), [unmapped reads](#Unmapped-reads), [HPRC pangenomes](#HPRC-pangenomes).
 
 [Test locally](#testing-locally) with:
 
@@ -370,7 +378,7 @@ miniwdl run --as-me workflows/haplotype_sampling.wdl -i params/haplotype_samplin
 ### Going further
 
 See below more information
-about: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [CRAM input](#CRAM-input), [reads chunking](#Reads-chunking), [path list](#Path-list), [single-end reads](#Single-end-reads), [unmapped reads](#Unmapped-reads), [HPRC pangenomes](#HPRC-pangenomes).
+about: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [CRAM input](#CRAM-input), [reads chunking](#Reads-chunking), [path list](#Path-list), [single-end reads](#Single-end-reads), [interleaved reads](#Interleaved-reads), [unmapped reads](#Unmapped-reads), [HPRC pangenomes](#HPRC-pangenomes).
 
 #### Read realignment
 
@@ -461,6 +469,17 @@ To use single-end reads:
 
 - If providing FASTQs, only provide `INPUT_READ_FILE_1` (no `INPUT_READ_FILE_2`).
 - Use `PAIRED_READS=false`
+
+#### Interleaved reads
+
+Some paired-end reads are stored in a single FASTQ file with the two reads of each pair interleaved.
+
+To use interleaved paired-end reads:
+
+- Only provide `INPUT_READ_FILE_1` (no `INPUT_READ_FILE_2`).
+- Use `PAIRED_READS=true`
+- Use `INTERLEAVED_READS=true`
+- Ensure `READS_PER_CHUNK` is even
 
 #### Unmapped reads
 

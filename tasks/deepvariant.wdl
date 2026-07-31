@@ -40,16 +40,16 @@ task runDeepVariantMakeExamples {
         set -o xtrace
         #to turn off echo do 'set +o xtrace'
         
-        ln -s ~{in_bam_file} input_bam_file.bam
-        ln -s ~{in_bam_file_index} input_bam_file.bam.bai
+        ln -s '~{in_bam_file}' input_bam_file.bam
+        ln -s '~{in_bam_file_index}' input_bam_file.bam.bai
         # Files may or may not be indel realigned or left shifted in the names.
         # TODO: move tracking of contig ID to WDL variables!
-        CONTIG_ID=($(ls ~{in_bam_file} | rev | cut -f1 -d'/' | rev | sed s/^~{in_sample_name}.//g | sed s/.bam$//g | sed s/.indel_realigned$//g | sed s/.left_shifted$//g))
+        CONTIG_ID="$(ls '~{in_bam_file}' | rev | cut -f1 -d'/' | rev | sed 's/^~{in_sample_name}.//g' | sed s/.bam$//g | sed s/.indel_realigned$//g | sed s/.left_shifted$//g)"
 
         # Reference and its index must be adjacent and not at arbitrary paths
         # the runner gives.
-        ln -f -s ~{in_reference_file} reference.fa
-        ln -f -s ~{in_reference_index_file} reference.fa.fai
+        ln -f -s '~{in_reference_file}' reference.fa
+        ln -f -s '~{in_reference_index_file}' reference.fa.fai
                 
         MODEL_TYPE=~{in_model_type}
 
@@ -57,6 +57,8 @@ task runDeepVariantMakeExamples {
         if [[ ~{length(in_model_files)} -gt 0 ]] ; then
             # Need to use a custom model
             mkdir model_dir
+            # TODO: Upgrade to squote() in post-1.0 WDL to allow more filenames without crashing
+            # TODO: Make WDL escaping/quoting properly out-of-band
             ln -s ~{sep=" " in_model_files} model_dir/
             if [[ ~{length(in_model_variables_files)} -gt 0 ]] ; then
                 # Some models (like the DV release default models) also have a "variables" subdirectory. Handle it specially.
@@ -315,13 +317,13 @@ task runDeepVariantCallVariants {
         set -o xtrace
         #to turn off echo do 'set +o xtrace'
         
-        tar -xzf ~{in_examples_file}
-        tar -xzf ~{in_nonvariant_site_tf_file}
+        tar -xzf '~{in_examples_file}'
+        tar -xzf '~{in_nonvariant_site_tf_file}'
         
         # Reference and its index must be adjacent and not at arbitrary paths
         # the runner gives.
-        ln -f -s ~{in_reference_file} reference.fa
-        ln -f -s ~{in_reference_index_file} reference.fa.fai
+        ln -f -s '~{in_reference_file}' reference.fa
+        ln -f -s '~{in_reference_index_file}' reference.fa.fai
 
         MODEL_TYPE=~{in_model_type}
 
@@ -369,7 +371,7 @@ task runDeepVariantCallVariants {
         --nonvariant_site_tfrecord_path "gvcf.tfrecord@~{in_call_cores}.gz" \
         --outfile "~{in_sample_name}_deepvariant.vcf.gz" \
         --cpus ~{in_call_cores} \
-        ~{if length(in_haploid_contigs) > 0 then "--haploid_contigs" else ""} ~{sep=',' in_haploid_contigs} \
+        --haploid_contigs '~{sep=',' in_haploid_contigs}' \
         ~{"--par_regions_bed " + in_par_regions_bed_file} \
         --gvcf_outfile "~{in_sample_name}_deepvariant.g.vcf.gz"
     >>>

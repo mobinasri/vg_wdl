@@ -29,6 +29,7 @@ workflow GiraffeDeepVariant {
         OUTPUT_CALLING_BAMS: "Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM."
         OUTPUT_UNMAPPED_BAM: "Should an unmapped reads BAM be saved? Default is false."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
+        INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
         READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
         CONTIGS: "(OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index."
         PATH_LIST_FILE: "(OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths."
@@ -73,6 +74,7 @@ workflow GiraffeDeepVariant {
         DV_KEEP_LEGACY_AC: "Should DV use the legacy allele counter behavior? If unspecified this is not done, unless set in the model. Might want to be on for short reads."
         DV_NORM_READS: "Should DV normalize reads itself? If unspecified this is not done, unless set in the model."
         OTHER_MAKEEXAMPLES_ARG: "Additional arguments for the make_examples step of DeepVariant"
+        DV_USE_GPUS: "Should DeepVariant use GPUs for calling variants? Default is 'true'."
         DV_NO_GPU_DOCKER: "Container image to use when running DeepVariant for steps that don't benefit from GPUs. Must be DeepVariant 1.8+."
         DV_GPU_DOCKER: "Container image to use when running DeepVariant for steps that benefit from GPUs. Must be DeepVariant 1.8+."
         SPLIT_READ_CORES: "Number of cores to use when splitting the reads into chunks. Default is 8."
@@ -80,6 +82,9 @@ workflow GiraffeDeepVariant {
         MAP_CORES: "Number of cores to use when mapping the reads. Default is 16."
         MAP_MEM: "Memory, in GB, to use when mapping the reads. Default is 120."
         HAPLOTYPE_SAMPLING: "Whether or not to use haplotype sampling before running giraffe. Default is 'true'."
+        INDEX_MINIMIZER_WEIGHTED: "Whether to use weighted minimizer indexing with haplotype sampling. (Default: true)"
+        INDEX_MINIMIZER_MEM: "Memory, in GB, to use when making the minimizer index. (Default: 320 if weighted, 120 otherwise)"
+        KMER_COUNTING_MEM: "Memory, in GB, to use when counting kmers. (Default: 64)"
         BAM_PREPROCESS_MEM: "Memory, in GB, to use when preprocessing BAMs (left-shifting and preparing realignment targets). Default is 20."
         REALIGN_MEM: "Memory, in GB, to use for Abra indel realignment. Default is 40 or MAP_MEM, whichever is lower."
         CALL_CORES: "Number of cores to use when calling variants. Default is 8."
@@ -109,6 +114,7 @@ workflow GiraffeDeepVariant {
         Boolean OUTPUT_CALLING_BAMS = !OUTPUT_SINGLE_BAM
         Boolean OUTPUT_UNMAPPED_BAM = false
         Boolean PAIRED_READS = true
+        Boolean INTERLEAVED_READS = false
         Int READS_PER_CHUNK = 20000000
         Array[String]+? CONTIGS
         File? PATH_LIST_FILE
@@ -152,6 +158,7 @@ workflow GiraffeDeepVariant {
         Boolean? DV_KEEP_LEGACY_AC
         Boolean? DV_NORM_READS
         String OTHER_MAKEEXAMPLES_ARG = ""
+        Boolean DV_USE_GPUS = true
         String? DV_NO_GPU_DOCKER
         String? DV_GPU_DOCKER
         Int SPLIT_READ_CORES = 8
@@ -160,6 +167,9 @@ workflow GiraffeDeepVariant {
         Int MAP_MEM = 120
         Boolean HAPLOTYPE_SAMPLING = true
         Boolean PANGENOMES_ARE_SAME = false
+        Boolean INDEX_MINIMIZER_WEIGHTED = true
+        Int INDEX_MINIMIZER_MEM = if INDEX_MINIMIZER_WEIGHTED then 320 else 120
+        Int KMER_COUNTING_MEM = 64
         Int BAM_PREPROCESS_MEM = 20
         Int REALIGN_MEM = if MAP_MEM < 40 then MAP_MEM else 40
         Int CALL_CORES = 8
@@ -248,6 +258,7 @@ workflow GiraffeDeepVariant {
         OUTPUT_CALLING_BAMS=false,
         OUTPUT_GAF=OUTPUT_GAF,
         PAIRED_READS=PAIRED_READS,
+        INTERLEAVED_READS=INTERLEAVED_READS,
         READS_PER_CHUNK=READS_PER_CHUNK,
         PATH_LIST_FILE=pipeline_path_list_file,
         CONTIGS=CONTIGS,
@@ -268,6 +279,10 @@ workflow GiraffeDeepVariant {
         HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
         CREATE_INDEX_OPTIONS_BEFORE_SAMPLING=CREATE_INDEX_OPTIONS_BEFORE_SAMPLING,
         OUTPUT_HAPL=PANGENOMES_ARE_SAME,
+        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+        INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
+        INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
+        KMER_COUNTING_MEM=KMER_COUNTING_MEM,
         HAPLOTYPE_INDEXING_MEM=HAPLOTYPE_INDEXING_MEM,
         VG_DOCKER=VG_DOCKER,
         VG_GIRAFFE_DOCKER=VG_GIRAFFE_DOCKER,
@@ -327,6 +342,7 @@ workflow GiraffeDeepVariant {
         DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
         DV_NORM_READS=DV_NORM_READS,
         OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
+        DV_USE_GPUS=DV_USE_GPUS,
         DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
         DV_GPU_DOCKER=DV_GPU_DOCKER,
         BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
