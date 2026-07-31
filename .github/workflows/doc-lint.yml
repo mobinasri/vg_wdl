@@ -1,0 +1,38 @@
+name: documentation lint
+
+on:
+  push:
+    paths:
+      - '**.wdl'
+      - 'params/**.json'
+      - 'README.md'
+      - 'scripts/lint_wdl_docs.py'
+      - 'scripts/doc_lint_exemptions.txt'
+      - '.github/workflows/doc-lint.yml'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '**.wdl'
+      - 'params/**.json'
+      - 'README.md'
+      - 'scripts/lint_wdl_docs.py'
+      - 'scripts/doc_lint_exemptions.txt'
+      - '.github/workflows/doc-lint.yml'
+
+jobs:
+  doc-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # The linter parses the WDLs with miniwdl's Python API.
+      - name: Install miniwdl
+        run: pip install miniwdl==1.11.0
+
+      - name: Check that workflows, README, and example inputs agree
+        run: python3 scripts/lint_wdl_docs.py

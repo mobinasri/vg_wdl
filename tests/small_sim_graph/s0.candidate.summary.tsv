@@ -1,0 +1,4 @@
+variant_type	region	tp	fp	fn	recall
+SNP	all	102	4	1	0.990
+INDEL	all	48	8	11	0.813
+SV	all	1	0	0	1.0

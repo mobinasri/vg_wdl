@@ -1,0 +1,536 @@
+version 1.0
+
+import "../tasks/aardvark_evaluation.wdl" as aardvark_tasks
+import "../tasks/bioinfo_utils.wdl" as utils
+import "../tasks/vg_map_hts.wdl" as map
+import "./aardvark_evaluation.wdl" as aardvark_wf
+import "./giraffe_and_deepvariant.wdl" as gd_wf
+import "./giraffe_indexes.wdl" as index_wf
+
+workflow GiraffeAcceptanceTest {
+
+    meta {
+        description: "## Giraffe acceptance test workflow \n Map one sample twice with two different vg containers, call variants on each mapping with DeepVariant, and evaluate both call sets against the same truth set with [Aardvark](https://github.com/PacificBiosciences/aardvark), to see what changing vg does to variant calling accuracy. One run is the baseline and one is the candidate; they differ only in the vg container, so anything the two runs can share is computed once and handed to both. That includes the reads (a CRAM is converted to FASTQ once), the reference and contig list, and, unless CANDIDATE_SEPARATE_INDEXES is set, the Giraffe indexes. Set CANDIDATE_SEPARATE_INDEXES when the candidate vg needs indexes the baseline vg cannot write, and either pass the candidate's indexes in the CANDIDATE_* inputs or let them be built with the candidate container."
+    }
+
+    parameter_meta {
+        BASELINE_VG_DOCKER: "Container image to use when running vg for the baseline run, which is the known-good version to compare against"
+        CANDIDATE_VG_DOCKER: "Container image to use when running vg for the candidate run, which is the version under test"
+        BASELINE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Alternate container image to use when running vg giraffe mapping in the baseline run"
+        BASELINE_VG_SURJECT_DOCKER: "(OPTIONAL) Alternate container image to use when running vg surject in the baseline run"
+        CANDIDATE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Alternate container image to use when running vg giraffe mapping in the candidate run"
+        CANDIDATE_VG_SURJECT_DOCKER: "(OPTIONAL) Alternate container image to use when running vg surject in the candidate run"
+        INPUT_READ_FILE_1: "Input sample 1st read pair fastq.gz"
+        INPUT_READ_FILE_2: "Input sample 2nd read pair fastq.gz"
+        INPUT_CRAM_FILE: "Input CRAM file. Converted to FASTQ once and shared by both runs."
+        CRAM_REF: "Genome fasta file associated with the CRAM file"
+        CRAM_REF_INDEX: "Index of the fasta file associated with the CRAM file"
+        GBZ_FILE: "Path to .gbz index file. Used by both runs unless CANDIDATE_SEPARATE_INDEXES is set."
+        DIST_FILE: "(OPTIONAL) Path to .dist index file. Built with the baseline vg if not provided."
+        MIN_FILE: "(OPTIONAL) Path to .min index file. Built with the baseline vg if not provided."
+        ZIPCODES_FILE: "(OPTIONAL) For chaining-based alignment, path to .zipcodes index file matching MIN_FILE"
+        HAPL_FILE: "(OPTIONAL) Path to .hapl file used in haplotype sampling"
+        CANDIDATE_SEPARATE_INDEXES: "Should the candidate run get its own indexes instead of sharing the baseline run's? Set this when the two vg versions cannot use each other's indexes. Default is 'false'."
+        CANDIDATE_GBZ_FILE: "(OPTIONAL) Path to .gbz index file for the candidate run. Only used if CANDIDATE_SEPARATE_INDEXES is set; defaults to GBZ_FILE."
+        CANDIDATE_DIST_FILE: "(OPTIONAL) Path to .dist index file for the candidate run. Only used if CANDIDATE_SEPARATE_INDEXES is set; built with the candidate vg if not provided."
+        CANDIDATE_MIN_FILE: "(OPTIONAL) Path to .min index file for the candidate run. Only used if CANDIDATE_SEPARATE_INDEXES is set; built with the candidate vg if not provided."
+        CANDIDATE_ZIPCODES_FILE: "(OPTIONAL) Path to .zipcodes index file for the candidate run, matching CANDIDATE_MIN_FILE. Only used if CANDIDATE_SEPARATE_INDEXES is set."
+        CANDIDATE_HAPL_FILE: "(OPTIONAL) Path to .hapl file for the candidate run. Only used if CANDIDATE_SEPARATE_INDEXES is set."
+        SAMPLE_NAME: "The sample name"
+        TRUTH_VCF: "Path to .vcf.gz of truth calls to evaluate both runs against"
+        TRUTH_VCF_INDEX: "(OPTIONAL) Tabix index for TRUTH_VCF. Made if not provided."
+        EVALUATION_REGIONS_BED: "BED of regions to evaluate in. Required, because Aardvark needs to be told where the truth set is complete."
+        STRATIFICATION_ARCHIVE: "(OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the Aardvark results down by"
+        RUN_HAPPY_EVALUATION: "Should hap.py and vcfeval also be run on each call set, in addition to Aardvark? Default is 'false'."
+        RESTRICT_REGIONS_BED: "(OPTIONAL) BED to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set."
+        TARGET_REGION: "(OPTIONAL) Contig or region to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set."
+        RUN_STANDALONE_VCFEVAL: "Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs). Only used if RUN_HAPPY_EVALUATION is set."
+        OUTPUT_GAF: "Should a GAF file with the aligned reads be saved for each run? Default is 'false'."
+        OUTPUT_BAM: "Should the merged BAM be saved for each run? Default is 'false'."
+        PAIRED_READS: "Are the reads paired? Default is 'true'."
+        INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
+        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
+        CONTIGS: "(OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index."
+        PATH_LIST_FILE: "(OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths."
+        REFERENCE_PREFIX: "Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)"
+        REFERENCE_FILE: "(OPTIONAL) If specified, use this FASTA reference instead of extracting it from the graph. Required if the graph does not contain all bases of the reference."
+        REFERENCE_INDEX_FILE: "(OPTIONAL) If specified, use this .fai index instead of indexing the reference file."
+        REFERENCE_DICT_FILE: "(OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths."
+        HAPLOID_CONTIGS: "(OPTIONAL) Names of contigs in the reference (without REFERENCE_PREFIX) that are haploid in this sample (often chrX and chrY). Not compatible with DeepVariant 1.5."
+        PAR_REGIONS_BED_FILE: "(OPTIONAL) BED file with pseudo-autosomal regions. Not compatible with DeepVariant 1.5."
+        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'."
+        LEFTALIGN_BAM: "Whether or not to left-align reads in the BAM. Default is 'true'."
+        REALIGN_INDELS: "Whether or not to realign reads near indels. Default is 'true'."
+        REALIGNMENT_EXPANSION_BASES: "Number of bases to expand indel realignment targets by on either side, to free up read tails in slippery regions. Default is 160."
+        MIN_MAPQ: "Minimum MAPQ of reads to use for calling. 4 is the lowest at which a mapping is more likely to be right than wrong. Default is the DeepVariant default for the model type."
+        MAX_FRAGMENT_LENGTH: "Maximum distance at which to mark paired reads properly paired. Default is 3000."
+        GIRAFFE_PRESET: "(OPTIONAL) Name of Giraffe mapper parameter preset to use (default, fast, hifi, or r10)"
+        GIRAFFE_OPTIONS: "(OPTIONAL) Extra command line options for Giraffe mapper"
+        DV_MODEL_TYPE: "Type of DeepVariant model to use. Can be WGS (default), WES, PACBIO, ONT_R104, or HYBRID_PACBIO_ILLUMINA."
+        DV_MODEL_META: ".meta file for a custom DeepVariant calling model"
+        DV_MODEL_INDEX: ".index file for a custom DeepVariant calling model"
+        DV_MODEL_DATA: ".data-00000-of-00001 file for a custom DeepVariant calling model"
+        DV_MODEL_FILES: "Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format"
+        DV_MODEL_VARIABLES_FILES: "Array of files that need to go in a 'variables' subdirectory for a DV model"
+        DV_KEEP_LEGACY_AC: "Should DV use the legacy allele counter behavior? If unspecified this is not done, unless set in the model. Might want to be on for short reads."
+        DV_NORM_READS: "Should DV normalize reads itself? If unspecified this is not done, unless set in the model."
+        OTHER_MAKEEXAMPLES_ARG: "Additional arguments for the make_examples step of DeepVariant"
+        DV_USE_GPUS: "Should DeepVariant use GPUs for calling variants? Default is 'true'."
+        DV_NO_GPU_DOCKER: "Container image to use when running DeepVariant for steps that don't benefit from GPUs. Must be DeepVariant 1.8+."
+        DV_GPU_DOCKER: "Container image to use when running DeepVariant for steps that benefit from GPUs. Must be DeepVariant 1.8+."
+        SPLIT_READ_CORES: "Number of cores to use when splitting the reads into chunks. Default is 8."
+        SPLIT_READ_MEM: "Memory, in GB, to use when splitting the reads into chunks. Default is 50."
+        MAP_CORES: "Number of cores to use when mapping the reads. Default is 16."
+        MAP_MEM: "Memory, in GB, to use when mapping the reads. Default is 120."
+        HAPLOTYPE_SAMPLING: "Whether or not to use haplotype sampling before running giraffe. The sampled graph and its indexes count as indexes, so they are made once unless CANDIDATE_SEPARATE_INDEXES is set. Default is 'true'."
+        INDEX_MINIMIZER_WEIGHTED: "Whether to use weighted minimizer indexing. (Default: true)"
+        INDEX_MINIMIZER_MEM: "Memory, in GB, to use when making the minimizer index. (Default: 320 if weighted, 120 otherwise)"
+        KMER_COUNTING_MEM: "Memory, in GB, to use when counting kmers. (Default: 64)"
+        HAPLOTYPE_INDEXING_MEM: "Memory, in GB, to use for haplotype sampling indexing tasks (distance index, r-index, haplotype index, sampling, and giraffe distance index). (Default: 120)"
+        BAM_PREPROCESS_MEM: "Memory, in GB, to use when preprocessing BAMs (left-shifting and preparing realignment targets). Default is 20."
+        REALIGN_MEM: "Memory, in GB, to use for Abra indel realignment. Default is 40 or MAP_MEM, whichever is lower."
+        CALL_CORES: "Number of cores to use when calling variants. Default is 8."
+        CALL_MEM: "Memory, in GB, to use when calling variants. Default is 50."
+        MAKE_EXAMPLES_CORES: "Number of cores to use when making DeepVariant examples. Default is CALL_CORES."
+        MAKE_EXAMPLES_MEM: "Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM."
+        AARDVARK_CORES: "Number of cores to use when running Aardvark. Default is 16."
+        AARDVARK_MEM: "Memory, in GB, to use when running Aardvark. Default is 30."
+        EVAL_MEM: "Memory, in GB, to use when evaluating variant calls with hap.py. Default is 60."
+    }
+
+    input {
+        String BASELINE_VG_DOCKER = "quay.io/vgteam/vg:v1.64.0"
+        String CANDIDATE_VG_DOCKER = "quay.io/vgteam/vg:v1.64.0"
+        String? BASELINE_VG_GIRAFFE_DOCKER
+        String? BASELINE_VG_SURJECT_DOCKER
+        String? CANDIDATE_VG_GIRAFFE_DOCKER
+        String? CANDIDATE_VG_SURJECT_DOCKER
+        File? INPUT_READ_FILE_1
+        File? INPUT_READ_FILE_2
+        File? INPUT_CRAM_FILE
+        File? CRAM_REF
+        File? CRAM_REF_INDEX
+        File GBZ_FILE
+        File? DIST_FILE
+        File? MIN_FILE
+        File? ZIPCODES_FILE
+        File? HAPL_FILE
+        Boolean CANDIDATE_SEPARATE_INDEXES = false
+        File? CANDIDATE_GBZ_FILE
+        File? CANDIDATE_DIST_FILE
+        File? CANDIDATE_MIN_FILE
+        File? CANDIDATE_ZIPCODES_FILE
+        File? CANDIDATE_HAPL_FILE
+        String SAMPLE_NAME
+        File TRUTH_VCF
+        File? TRUTH_VCF_INDEX
+        File EVALUATION_REGIONS_BED
+        File? STRATIFICATION_ARCHIVE
+        Boolean RUN_HAPPY_EVALUATION = false
+        File? RESTRICT_REGIONS_BED
+        String? TARGET_REGION
+        Boolean RUN_STANDALONE_VCFEVAL = true
+        Boolean OUTPUT_GAF = false
+        Boolean OUTPUT_BAM = false
+        Boolean PAIRED_READS = true
+        Boolean INTERLEAVED_READS = false
+        Int READS_PER_CHUNK = 20000000
+        Array[String]+? CONTIGS
+        File? PATH_LIST_FILE
+        String REFERENCE_PREFIX = ""
+        File? REFERENCE_FILE
+        File? REFERENCE_INDEX_FILE
+        File? REFERENCE_DICT_FILE
+        Array[String]? HAPLOID_CONTIGS
+        File? PAR_REGIONS_BED_FILE
+        Boolean PRUNE_LOW_COMPLEXITY = true
+        Boolean LEFTALIGN_BAM = true
+        Boolean REALIGN_INDELS = true
+        Int REALIGNMENT_EXPANSION_BASES = 160
+        Int? MIN_MAPQ
+        Int MAX_FRAGMENT_LENGTH = 3000
+        String GIRAFFE_PRESET = "default"
+        String GIRAFFE_OPTIONS = ""
+        String DV_MODEL_TYPE = "WGS"
+        File? DV_MODEL_META
+        File? DV_MODEL_INDEX
+        File? DV_MODEL_DATA
+        Array[File]? DV_MODEL_FILES
+        Array[File]? DV_MODEL_VARIABLES_FILES
+        Boolean? DV_KEEP_LEGACY_AC
+        Boolean? DV_NORM_READS
+        String OTHER_MAKEEXAMPLES_ARG = ""
+        Boolean DV_USE_GPUS = true
+        String? DV_NO_GPU_DOCKER
+        String? DV_GPU_DOCKER
+        Int SPLIT_READ_CORES = 8
+        Int SPLIT_READ_MEM = 50
+        Int MAP_CORES = 16
+        Int MAP_MEM = 120
+        Boolean HAPLOTYPE_SAMPLING = true
+        Boolean INDEX_MINIMIZER_WEIGHTED = true
+        Int INDEX_MINIMIZER_MEM = if INDEX_MINIMIZER_WEIGHTED then 320 else 120
+        Int KMER_COUNTING_MEM = 64
+        Int HAPLOTYPE_INDEXING_MEM = 120
+        Int BAM_PREPROCESS_MEM = 20
+        Int REALIGN_MEM = if MAP_MEM < 40 then MAP_MEM else 40
+        Int CALL_CORES = 8
+        Int CALL_MEM = 50
+        Int MAKE_EXAMPLES_CORES = CALL_CORES
+        Int MAKE_EXAMPLES_MEM = CALL_MEM
+        Int AARDVARK_CORES = 16
+        Int AARDVARK_MEM = 30
+        Int EVAL_MEM = 60
+    }
+
+    ####################################################################
+    # Everything the two runs are supposed to have in common is set up #
+    # here, once, so that the vg container is the only thing that      #
+    # differs between them.                                            #
+    ####################################################################
+
+    # Both runs have to see exactly the same reads, so a CRAM is converted once
+    # up front instead of once inside each run.
+    if (defined(INPUT_CRAM_FILE) && defined(CRAM_REF) && defined(CRAM_REF_INDEX)) {
+        call utils.convertCRAMtoFASTQ {
+            input:
+            in_cram_file=INPUT_CRAM_FILE,
+            in_ref_file=CRAM_REF,
+            in_ref_index_file=CRAM_REF_INDEX,
+            in_paired_reads=PAIRED_READS,
+            in_cores=SPLIT_READ_CORES,
+            in_memory=SPLIT_READ_MEM
+        }
+    }
+    File read_1_file = select_first([INPUT_READ_FILE_1, convertCRAMtoFASTQ.output_fastq_1_file])
+    if (PAIRED_READS && !INTERLEAVED_READS) {
+        File read_2_file = select_first([INPUT_READ_FILE_2, convertCRAMtoFASTQ.output_fastq_2_file])
+    }
+    # Interleaved reads live entirely in the first file, so there is no second
+    # file to pass on in that case.
+    File? second_read_file = if PAIRED_READS && !INTERLEAVED_READS then read_2_file else INPUT_READ_FILE_2
+
+    # The contig set and the reference come from the graph as given, before any
+    # haplotype sampling, and are shared by both runs and by the evaluation.
+    # Sharing them is what makes the two call sets comparable at all: they have
+    # to be called on the same contigs against the same reference bases.
+    if (!defined(CONTIGS)) {
+        if (!defined(PATH_LIST_FILE)) {
+            # Filter down to major paths, because GRCh38 includes thousands of
+            # decoys and unplaced/unlocalized contigs, and we can't efficiently
+            # scatter across them, nor do we care about accuracy on them, and also
+            # calling on the decoys is semantically meaningless.
+            call map.extractSubsetPathNames {
+                input:
+                    in_gbz_file=GBZ_FILE,
+                    in_reference_prefix=REFERENCE_PREFIX,
+                    in_extract_mem=MAP_MEM,
+                    vg_docker=BASELINE_VG_DOCKER
+            }
+        }
+    }
+    if (defined(CONTIGS)) {
+        # We know the value is defined, but WDL is a bit low on unboxing calls
+        # for optionals, so we use select_first.
+        File written_path_names_file = write_lines(select_first([CONTIGS]))
+    }
+    File pipeline_path_list_file = select_first([PATH_LIST_FILE, extractSubsetPathNames.output_path_list_file, written_path_names_file])
+
+    if (!defined(REFERENCE_FILE)) {
+        call map.extractReference {
+            input:
+            in_gbz_file=GBZ_FILE,
+            in_path_list_file=pipeline_path_list_file,
+            in_prefix_to_strip=REFERENCE_PREFIX,
+            in_extract_mem=MAP_MEM,
+            vg_docker=BASELINE_VG_DOCKER
+        }
+    }
+    if (defined(REFERENCE_FILE)) {
+        call utils.uncompressReferenceIfNeeded {
+            input:
+            # We know REFERENCE_FILE is defined but the WDL type system doesn't.
+            in_reference_file=select_first([REFERENCE_FILE])
+        }
+    }
+    File reference_file = select_first([uncompressReferenceIfNeeded.reference_file, extractReference.reference_file])
+
+    if (!defined(REFERENCE_INDEX_FILE) || !defined(REFERENCE_DICT_FILE)) {
+        call utils.indexReference {
+            input:
+                in_reference_file=reference_file
+        }
+    }
+    File reference_index_file = select_first([REFERENCE_INDEX_FILE, indexReference.reference_index_file])
+    File reference_dict_file = select_first([REFERENCE_DICT_FILE, indexReference.reference_dict_file])
+
+    # Both evaluations, and hap.py if it is running, need the truth set indexed.
+    if (!defined(TRUTH_VCF_INDEX)) {
+        call utils.indexVcf as indexTruthVcf {
+            input:
+            in_vcf=TRUTH_VCF
+        }
+    }
+    File truth_vcf_index = select_first([TRUTH_VCF_INDEX, indexTruthVcf.vcf_index_file])
+
+    # hap.py in the DeepVariant workflow turns itself on when it is given a
+    # truth set, so we only hand it one when it is wanted.
+    if (RUN_HAPPY_EVALUATION) {
+        File happy_truth_vcf = TRUTH_VCF
+        File happy_truth_vcf_index = truth_vcf_index
+        File happy_regions_bed = EVALUATION_REGIONS_BED
+    }
+
+    ###############################################################
+    # Indexes: one set for both runs, or one set per run          #
+    ###############################################################
+
+    call index_wf.GiraffeIndexes as baselineIndexes {
+        input:
+        GBZ_FILE=GBZ_FILE,
+        DIST_FILE=DIST_FILE,
+        MIN_FILE=MIN_FILE,
+        ZIPCODES_FILE=ZIPCODES_FILE,
+        HAPL_FILE=HAPL_FILE,
+        HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
+        INPUT_READ_FILE_FIRST=read_1_file,
+        INPUT_READ_FILE_SECOND=second_read_file,
+        GIRAFFE_PRESET=GIRAFFE_PRESET,
+        INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
+        INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
+        KMER_COUNTING_MEM=KMER_COUNTING_MEM,
+        HAPLOTYPE_INDEXING_MEM=HAPLOTYPE_INDEXING_MEM,
+        CORES=MAP_CORES,
+        VG_DOCKER=BASELINE_VG_DOCKER
+    }
+
+    if (CANDIDATE_SEPARATE_INDEXES) {
+        # The candidate gets its own indexes, from its own inputs where they are
+        # given and from its own vg where they are not.
+        call index_wf.GiraffeIndexes as candidateIndexes {
+            input:
+            GBZ_FILE=select_first([CANDIDATE_GBZ_FILE, GBZ_FILE]),
+            DIST_FILE=CANDIDATE_DIST_FILE,
+            MIN_FILE=CANDIDATE_MIN_FILE,
+            ZIPCODES_FILE=CANDIDATE_ZIPCODES_FILE,
+            HAPL_FILE=CANDIDATE_HAPL_FILE,
+            HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
+            INPUT_READ_FILE_FIRST=read_1_file,
+            INPUT_READ_FILE_SECOND=second_read_file,
+            GIRAFFE_PRESET=GIRAFFE_PRESET,
+            INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
+            INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
+            KMER_COUNTING_MEM=KMER_COUNTING_MEM,
+            HAPLOTYPE_INDEXING_MEM=HAPLOTYPE_INDEXING_MEM,
+            CORES=MAP_CORES,
+            VG_DOCKER=CANDIDATE_VG_DOCKER
+        }
+    }
+
+    File candidate_gbz_file = select_first([candidateIndexes.gbz_file, baselineIndexes.gbz_file])
+    File candidate_dist_file = select_first([candidateIndexes.dist_file, baselineIndexes.dist_file])
+    File candidate_min_file = select_first([candidateIndexes.min_file, baselineIndexes.min_file])
+    # Zipcodes can legitimately be absent, so we take the candidate's own only
+    # when the candidate had its own indexes made at all.
+    File? candidate_zipcodes_file = if CANDIDATE_SEPARATE_INDEXES then candidateIndexes.zipcodes_file else baselineIndexes.zipcodes_file
+
+    ###############################################################
+    # The two runs, differing only in which vg they use           #
+    ###############################################################
+
+    call gd_wf.GiraffeDeepVariant as baselineRun {
+        input:
+        INPUT_READ_FILE_1=read_1_file,
+        INPUT_READ_FILE_2=second_read_file,
+        GBZ_FILE=baselineIndexes.gbz_file,
+        DIST_FILE=baselineIndexes.dist_file,
+        MIN_FILE=baselineIndexes.min_file,
+        ZIPCODES_FILE=baselineIndexes.zipcodes_file,
+        SAMPLE_NAME=SAMPLE_NAME,
+        OUTPUT_GAF=OUTPUT_GAF,
+        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
+        OUTPUT_CALLING_BAMS=false,
+        PAIRED_READS=PAIRED_READS,
+        INTERLEAVED_READS=INTERLEAVED_READS,
+        READS_PER_CHUNK=READS_PER_CHUNK,
+        PATH_LIST_FILE=pipeline_path_list_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=reference_file,
+        REFERENCE_INDEX_FILE=reference_index_file,
+        REFERENCE_DICT_FILE=reference_dict_file,
+        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
+        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
+        PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+        LEFTALIGN_BAM=LEFTALIGN_BAM,
+        REALIGN_INDELS=REALIGN_INDELS,
+        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
+        MIN_MAPQ=MIN_MAPQ,
+        MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+        GIRAFFE_PRESET=GIRAFFE_PRESET,
+        GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
+        TRUTH_VCF=happy_truth_vcf,
+        TRUTH_VCF_INDEX=happy_truth_vcf_index,
+        EVALUATION_REGIONS_BED=happy_regions_bed,
+        RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
+        TARGET_REGION=TARGET_REGION,
+        RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
+        DV_MODEL_TYPE=DV_MODEL_TYPE,
+        DV_MODEL_META=DV_MODEL_META,
+        DV_MODEL_INDEX=DV_MODEL_INDEX,
+        DV_MODEL_DATA=DV_MODEL_DATA,
+        DV_MODEL_FILES=DV_MODEL_FILES,
+        DV_MODEL_VARIABLES_FILES=DV_MODEL_VARIABLES_FILES,
+        DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
+        DV_NORM_READS=DV_NORM_READS,
+        OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
+        DV_USE_GPUS=DV_USE_GPUS,
+        DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
+        DV_GPU_DOCKER=DV_GPU_DOCKER,
+        SPLIT_READ_CORES=SPLIT_READ_CORES,
+        SPLIT_READ_MEM=SPLIT_READ_MEM,
+        MAP_CORES=MAP_CORES,
+        MAP_MEM=MAP_MEM,
+        # The indexes are already made, so the mapping runs never sample again.
+        HAPLOTYPE_SAMPLING=false,
+        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+        REALIGN_MEM=REALIGN_MEM,
+        CALL_CORES=CALL_CORES,
+        CALL_MEM=CALL_MEM,
+        MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
+        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
+        EVAL_MEM=EVAL_MEM,
+        VG_DOCKER=BASELINE_VG_DOCKER,
+        VG_GIRAFFE_DOCKER=BASELINE_VG_GIRAFFE_DOCKER,
+        VG_SURJECT_DOCKER=BASELINE_VG_SURJECT_DOCKER
+    }
+
+    call gd_wf.GiraffeDeepVariant as candidateRun {
+        input:
+        INPUT_READ_FILE_1=read_1_file,
+        INPUT_READ_FILE_2=second_read_file,
+        GBZ_FILE=candidate_gbz_file,
+        DIST_FILE=candidate_dist_file,
+        MIN_FILE=candidate_min_file,
+        ZIPCODES_FILE=candidate_zipcodes_file,
+        SAMPLE_NAME=SAMPLE_NAME,
+        OUTPUT_GAF=OUTPUT_GAF,
+        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
+        OUTPUT_CALLING_BAMS=false,
+        PAIRED_READS=PAIRED_READS,
+        INTERLEAVED_READS=INTERLEAVED_READS,
+        READS_PER_CHUNK=READS_PER_CHUNK,
+        PATH_LIST_FILE=pipeline_path_list_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=reference_file,
+        REFERENCE_INDEX_FILE=reference_index_file,
+        REFERENCE_DICT_FILE=reference_dict_file,
+        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
+        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
+        PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+        LEFTALIGN_BAM=LEFTALIGN_BAM,
+        REALIGN_INDELS=REALIGN_INDELS,
+        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
+        MIN_MAPQ=MIN_MAPQ,
+        MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+        GIRAFFE_PRESET=GIRAFFE_PRESET,
+        GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
+        TRUTH_VCF=happy_truth_vcf,
+        TRUTH_VCF_INDEX=happy_truth_vcf_index,
+        EVALUATION_REGIONS_BED=happy_regions_bed,
+        RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
+        TARGET_REGION=TARGET_REGION,
+        RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
+        DV_MODEL_TYPE=DV_MODEL_TYPE,
+        DV_MODEL_META=DV_MODEL_META,
+        DV_MODEL_INDEX=DV_MODEL_INDEX,
+        DV_MODEL_DATA=DV_MODEL_DATA,
+        DV_MODEL_FILES=DV_MODEL_FILES,
+        DV_MODEL_VARIABLES_FILES=DV_MODEL_VARIABLES_FILES,
+        DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
+        DV_NORM_READS=DV_NORM_READS,
+        OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
+        DV_USE_GPUS=DV_USE_GPUS,
+        DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
+        DV_GPU_DOCKER=DV_GPU_DOCKER,
+        SPLIT_READ_CORES=SPLIT_READ_CORES,
+        SPLIT_READ_MEM=SPLIT_READ_MEM,
+        MAP_CORES=MAP_CORES,
+        MAP_MEM=MAP_MEM,
+        HAPLOTYPE_SAMPLING=false,
+        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+        REALIGN_MEM=REALIGN_MEM,
+        CALL_CORES=CALL_CORES,
+        CALL_MEM=CALL_MEM,
+        MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
+        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
+        EVAL_MEM=EVAL_MEM,
+        VG_DOCKER=CANDIDATE_VG_DOCKER,
+        VG_GIRAFFE_DOCKER=CANDIDATE_VG_GIRAFFE_DOCKER,
+        VG_SURJECT_DOCKER=CANDIDATE_VG_SURJECT_DOCKER
+    }
+
+    ###############################################################
+    # Evaluation of both call sets against the same truth         #
+    ###############################################################
+
+    call aardvark_wf.AardvarkEvaluation as baselineEvaluation {
+        input:
+        QUERY_VCF=baselineRun.output_vcf,
+        QUERY_VCF_INDEX=baselineRun.output_vcf_index,
+        TRUTH_VCF=TRUTH_VCF,
+        TRUTH_VCF_INDEX=truth_vcf_index,
+        REFERENCE_FILE=reference_file,
+        REFERENCE_INDEX_FILE=reference_index_file,
+        REGIONS_BED=EVALUATION_REGIONS_BED,
+        STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
+        SAMPLE_NAME=SAMPLE_NAME + ".baseline",
+        THREADS=AARDVARK_CORES,
+        EVAL_MEM=AARDVARK_MEM
+    }
+
+    call aardvark_wf.AardvarkEvaluation as candidateEvaluation {
+        input:
+        QUERY_VCF=candidateRun.output_vcf,
+        QUERY_VCF_INDEX=candidateRun.output_vcf_index,
+        TRUTH_VCF=TRUTH_VCF,
+        TRUTH_VCF_INDEX=truth_vcf_index,
+        REFERENCE_FILE=reference_file,
+        REFERENCE_INDEX_FILE=reference_index_file,
+        REGIONS_BED=EVALUATION_REGIONS_BED,
+        STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
+        SAMPLE_NAME=SAMPLE_NAME + ".candidate",
+        THREADS=AARDVARK_CORES,
+        EVAL_MEM=AARDVARK_MEM
+    }
+
+    call aardvark_tasks.compareAardvarkSummaries {
+        input:
+        in_left_summary=baselineEvaluation.aardvark_summary,
+        in_right_summary=candidateEvaluation.aardvark_summary,
+        in_left_label="baseline",
+        in_right_label="candidate",
+        in_output_name=SAMPLE_NAME + ".baseline_vs_candidate.tsv"
+    }
+
+    output {
+        File aardvark_comparison = compareAardvarkSummaries.output_comparison
+        File baseline_aardvark_summary = baselineEvaluation.aardvark_summary
+        File candidate_aardvark_summary = candidateEvaluation.aardvark_summary
+        Array[File] baseline_aardvark_all_files = baselineEvaluation.aardvark_all_files
+        Array[File] candidate_aardvark_all_files = candidateEvaluation.aardvark_all_files
+        File? baseline_happy_evaluation_archive = baselineRun.output_happy_evaluation_archive
+        File? candidate_happy_evaluation_archive = candidateRun.output_happy_evaluation_archive
+        File? baseline_vcfeval_evaluation_archive = baselineRun.output_vcfeval_evaluation_archive
+        File? candidate_vcfeval_evaluation_archive = candidateRun.output_vcfeval_evaluation_archive
+        File baseline_vcf = baselineRun.output_vcf
+        File baseline_vcf_index = baselineRun.output_vcf_index
+        File candidate_vcf = candidateRun.output_vcf
+        File candidate_vcf_index = candidateRun.output_vcf_index
+        File? baseline_gaf = baselineRun.output_gaf
+        File? candidate_gaf = candidateRun.output_gaf
+        File? baseline_bam = baselineRun.output_bam
+        File? baseline_bam_index = baselineRun.output_bam_index
+        File? candidate_bam = candidateRun.output_bam
+        File? candidate_bam_index = candidateRun.output_bam_index
+    }
+}

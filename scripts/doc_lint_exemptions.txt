@@ -1,0 +1,26 @@
+# Files that scripts/lint_wdl_docs.py does not check.
+#
+# Everything here predates the check and documents its parameters partly or not
+# at all. They are exempt so that the check can be enforced on the workflows
+# that are actually maintained; nothing new should be added to this list, and
+# entries should be removed as the files they name are documented or dropped.
+
+# The pedigree, trio and pre-Giraffe mapping and calling workflows, which the
+# README itself marks as legacy.
+workflows/giraffe_and_deeptrio.mapper.wdl
+workflows/giraffe_and_deeptrio.wdl
+workflows/vg_2nd_iter_pedigree_indel_realign.wdl
+workflows/vg_2nd_iter_pedigree_multi_call.wdl
+workflows/vg_2nd_iter_siblings_multi_map.wdl
+workflows/vg_construct_and_index.wdl
+workflows/vg_deeptrio_calling_workflow.wdl
+workflows/vg_indel_realign.wdl
+workflows/vg_map_call_sv.wdl
+workflows/vg_multi_call.wdl
+workflows/vg_multi_map.wdl
+workflows/vg_multi_map_call.wdl
+workflows/vg_trio_giraffe_deeptrio_workflow.wdl
+workflows/vg_trio_multi_call.wdl
+workflows/vg_trio_multi_map.wdl
+workflows/vg_trio_multi_map_call.wdl
+workflows/vg_trio_parental_graph_construction.wdl

@@ -1,0 +1,14 @@
+{
+  "GiraffeAcceptanceTest.INPUT_READ_FILE_1": "tests/small_sim_graph/reads_1.fastq.gz",
+  "GiraffeAcceptanceTest.INPUT_READ_FILE_2": "tests/small_sim_graph/reads_2.fastq.gz",
+  "GiraffeAcceptanceTest.GBZ_FILE": "tests/small_sim_graph/graph.gbz",
+  "GiraffeAcceptanceTest.MIN_FILE": "tests/small_sim_graph/graph.min",
+  "GiraffeAcceptanceTest.DIST_FILE": "tests/small_sim_graph/graph.dist",
+  "GiraffeAcceptanceTest.SAMPLE_NAME": "s0",
+  "GiraffeAcceptanceTest.TRUTH_VCF": "tests/small_sim_graph/s0.vcf.gz",
+  "GiraffeAcceptanceTest.EVALUATION_REGIONS_BED": "tests/small_sim_graph/ref.bed",
+  "GiraffeAcceptanceTest.HAPLOTYPE_SAMPLING": false,
+  "GiraffeAcceptanceTest.DV_GPU_DOCKER": "google/deepvariant:1.8.0-gpu",
+  "GiraffeAcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
+  "GiraffeAcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0"
+}
