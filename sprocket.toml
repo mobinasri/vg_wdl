@@ -22,6 +22,15 @@ except = [
     # trio/pedigree workflows even when a given task does not read them.
     "UnusedInput",
 
+    # --- Excepted because the findings are not reproducible ---
+    # This rule shells out to whatever `shellcheck` is on PATH, and the findings
+    # differ by version: shellcheck 0.10 on ubuntu-latest reports SC2236 and
+    # SC2002 where 0.11 does not. Because the baseline fails on stale entries as
+    # well as new ones, that drift breaks the build in both directions depending
+    # on who generated the baseline. `miniwdl check` already runs shellcheck over
+    # command sections, so excepting it here loses no coverage.
+    "ShellCheck",
+
     # --- Excepted to match long-standing vg_wdl naming conventions ---
     # Task inputs are prefixed `in_` (995 of 1005 findings) and workflow-level
     # inputs are SCREAMING_SNAKE_CASE (220 distinct names). Task names are
