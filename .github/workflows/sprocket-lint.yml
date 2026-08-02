@@ -1,0 +1,48 @@
+name: sprocket lint
+
+on:
+  push:
+    paths:
+      - '**.wdl'
+      - 'sprocket.toml'
+      - 'sprocket-baseline.toml'
+      - '.github/workflows/sprocket-lint.yml'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '**.wdl'
+      - 'sprocket.toml'
+      - 'sprocket-baseline.toml'
+      - '.github/workflows/sprocket-lint.yml'
+
+jobs:
+  sprocket-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up sprocket
+        uses: stjude-rust-labs/setup-sprocket@v1
+        with:
+          version: 0.28.0
+      - name: Run sprocket lint
+        id: lint
+        run: sprocket lint --report-mode one-line workflows tasks tests
+      - name: Explain how to fix
+        if: failure() && steps.lint.outcome == 'failure'
+        run: |
+          cat <<'EOF'
+          sprocket lint failed. Two things cause this:
+
+          1. New findings in code you changed. Fix them, or add a
+             `#@ except: RuleName` directive above the offending item if the
+             finding does not apply.
+
+          2. "Stale entries" in the baseline. This means you *fixed* something
+             that was previously recorded, which is good. It also happens when
+             you edit a line that had a recorded finding, because entries are
+             matched on a hash of the flagged source. Refresh the baseline with:
+
+               sprocket lint --generate-baseline workflows tasks tests
+
+             then commit the updated sprocket-baseline.toml.
+          EOF
