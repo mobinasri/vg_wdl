@@ -417,9 +417,9 @@ To compare two versions of `vg surject` while mapping with the baseline vg in bo
 
 ```json
 {
-  "GiraffeAcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
-  "GiraffeAcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
-  "GiraffeAcceptanceTest.CANDIDATE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:v1.64.0"
+  "AcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
+  "AcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
+  "AcceptanceTest.CANDIDATE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:v1.64.0"
 }
 ```
 
@@ -427,10 +427,10 @@ To compare two versions of `vg surject` while mapping with the *candidate* vg in
 
 ```json
 {
-  "GiraffeAcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
-  "GiraffeAcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
-  "GiraffeAcceptanceTest.BASELINE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
-  "GiraffeAcceptanceTest.CANDIDATE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE"
+  "AcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
+  "AcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
+  "AcceptanceTest.BASELINE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
+  "AcceptanceTest.CANDIDATE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE"
 }
 ```
 
@@ -438,7 +438,7 @@ To compare two versions of `vg giraffe` for mapping while surjecting the same wa
 
 The outputs are the Aardvark summary and full output directory for each run, plus each run's VCF.
 
-- workflow file: [workflows/giraffe_acceptance_test.wdl](workflows/giraffe_acceptance_test.wdl)
+- workflow file: [workflows/acceptance_test.wdl](workflows/acceptance_test.wdl)
 
 Parameters:
 
@@ -526,7 +526,7 @@ topics: [read realignment](#Read-realignment), [reference prefix removal](#Refer
 [Test locally](#testing-locally) with:
 
 ```sh
-miniwdl run --as-me workflows/giraffe_acceptance_test.wdl -i params/giraffe_acceptance_test.json
+miniwdl run --as-me workflows/acceptance_test.wdl -i params/acceptance_test.json
 ```
 
 ### GAF to sorted GAM workflow
