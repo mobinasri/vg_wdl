@@ -82,7 +82,7 @@ Parameters:
 - *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
 - *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
-- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20,000,000.  
+- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 million.  
 - *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index.  
 - *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.  
 - *REFERENCE_PREFIX*: Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)  
@@ -101,7 +101,9 @@ Parameters:
 - *GIRAFFE_OPTIONS*: (OPTIONAL) Extra command line options for Giraffe mapper  
 - *TRUTH_VCF*: Path to .vcf.gz to compare against  
 - *TRUTH_VCF_INDEX*: Path to Tabix index for TRUTH_VCF  
-- *EVALUATION_REGIONS_BED*: BED to evaluate against TRUTH_VCF on, where false positives will be counted  
+- *EVALUATION_REGIONS_BED*: BED to evaluate against TRUTH_VCF on, where false positives will be counted. Required when EVALUATE_WITH_AARDVARK is set.  
+- *EVALUATE_WITH_AARDVARK*: Should the calls be compared to TRUTH_VCF with Aardvark instead of hap.py? Default is 'false'.
+- *STRATIFICATION_ARCHIVE*: (OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the results down by. Only used when EVALUATE_WITH_AARDVARK is set.
 - *RESTRICT_REGIONS_BED*: BED to restrict comparison against TRUTH_VCF to  
 - *TARGET_REGION*: Contig or region to restrict evaluation to  
 - *RUN_STANDALONE_VCFEVAL*: Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)  
@@ -132,6 +134,7 @@ Parameters:
 - *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.  
 - *MAKE_EXAMPLES_CORES*: Number of cores to use when making DeepVariant examples. Default is CALL_CORES.
 - *MAKE_EXAMPLES_MEM*: Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM.
+- *EVAL_CORES*: Number of cores to use when evaluating variant calls. Default is 8.
 - *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 60.  
 - *VG_DOCKER*: Container image to use when running vg  
 - *VG_GIRAFFE_DOCKER*: Alternate container image to use when running vg giraffe mapping  
@@ -181,7 +184,7 @@ Parameters:
 - *OUTPUT_GAF_CHUNKS*: Should the unmerged GAF chunks be saved? Default is 'false'.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
 - *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
-- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 000 000.
+- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 million.
 - *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If
   neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.
 - *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index.
@@ -236,7 +239,11 @@ miniwdl run --as-me workflows/giraffe.wdl -i params/giraffe_and_haplotype_sampli
 ### Giraffe-DeepVariant from GAF workflow
 
 Surject a GAF and prepare the BAMs (e.g. fix names, indel realign), and call small variants
-with [DeepVariant](https://github.com/google/deepvariant).
+with [DeepVariant](https://github.com/google/deepvariant). Given a truth set, the calls are also compared to it,
+with [hap.py](https://github.com/Illumina/hap.py) or, if *EVALUATE_WITH_AARDVARK* is set,
+with [Aardvark](https://github.com/PacificBiosciences/aardvark).
+
+The GAF can be given whole, in which case it is split up to surject in parallel, or as chunks that are already split.
 
 - workflow file: [workflows/giraffe_and_deepvariant_fromGAF.wdl](workflows/giraffe_and_deepvariant_fromGAF.wdl)
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:master?tab=info)
@@ -244,11 +251,15 @@ with [DeepVariant](https://github.com/google/deepvariant).
 
 Parameters:
 
-- *INPUT_GAF*: Input gzipped GAF file
-- *GBZ_FILE*: Path to .gbz index file
+- *INPUT_GAF*: (OPTIONAL) Input gzipped GAF file, which is split up to surject in parallel. Give this or GAF_CHUNKS.
+- *GAF_CHUNKS*: (OPTIONAL) Input gzipped GAF, already split into chunks that can be surjected in parallel. Give this or INPUT_GAF.
+- *READS_PER_CHUNK*: Number of reads to put in each chunk when splitting INPUT_GAF. Unused if GAF_CHUNKS is given. Default 20 million.
+- *GBZ_FILE*: Path to .gbz index file. Has to be the graph the reads were mapped to, since the alignments name its nodes.
 - *SAMPLE_NAME*: The sample name
 - *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? If yes, unmapped reads will be inluded and 'calling
   bams' (one per contig) won't be outputed. Default is 'true'.
+- *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.
+- *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
 - *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If
   neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.
@@ -260,6 +271,9 @@ Parameters:
 - *REFERENCE_INDEX_FILE*: (OPTIONAL) If specified, use this .fai index instead of indexing the reference file.
 - *REFERENCE_DICT_FILE*: (OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths. Required if
   REFERENCE_INDEX_FILE is set
+- *HAPLOID_CONTIGS*: (OPTIONAL) Names of contigs in the reference (without REFERENCE_PREFIX) that are haploid in this sample (often chrX and chrY). Not compatible with DeepVariant 1.5.
+- *PAR_REGIONS_BED_FILE*: (OPTIONAL) BED file with pseudo-autosomal regions. Not compatible with DeepVariant 1.5.
+- *PRUNE_LOW_COMPLEXITY*: Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'.
 - *LEFTALIGN_BAM*: Whether or not to left-align reads in the BAM. Default is 'true'.
 - *REALIGN_INDELS*: Whether or not to realign reads near indels. Default is 'true'.
 - *REALIGNMENT_EXPANSION_BASES*: Number of bases to expand indel realignment targets by on either side, to free up read
@@ -267,6 +281,15 @@ Parameters:
 - *MIN_MAPQ*: Minimum MAPQ of reads to use for calling. 4 is the lowest at which a mapping is more likely to be right
   than wrong. Default is 1
 - *MAX_FRAGMENT_LENGTH*: Maximum distance at which to mark paired reads properly paired. Default is 3000.
+- *SURJECT_OPTIONS*: Extra command line options for vg surject.
+- *TRUTH_VCF*: (OPTIONAL) Path to .vcf.gz to compare the calls against. Evaluation only runs if this and TRUTH_VCF_INDEX are given.
+- *TRUTH_VCF_INDEX*: (OPTIONAL) Path to Tabix index for TRUTH_VCF
+- *EVALUATION_REGIONS_BED*: (OPTIONAL) BED to evaluate against TRUTH_VCF on, where false positives will be counted. Required when EVALUATE_WITH_AARDVARK is set.
+- *EVALUATE_WITH_AARDVARK*: Should the calls be compared to TRUTH_VCF with Aardvark instead of hap.py? Default is 'false'.
+- *STRATIFICATION_ARCHIVE*: (OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the results down by. Only used when EVALUATE_WITH_AARDVARK is set.
+- *RESTRICT_REGIONS_BED*: (OPTIONAL) BED to restrict comparison against TRUTH_VCF to
+- *TARGET_REGION*: (OPTIONAL) Contig or region to restrict evaluation to
+- *RUN_STANDALONE_VCFEVAL*: Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)
 - *DV_MODEL_TYPE*: Type of DeepVariant model to use. Can be WGS (default), WES, PACBIO, ONT_R104, or HYBRID_PACBIO_ILLUMINA.
 - *DV_MODEL_META*: (OPTIONAL) .meta file for a custom DeepVariant calling model
 - *DV_MODEL_INDEX*: (OPTIONAL) .index file for a custom DeepVariant calling model
@@ -275,14 +298,22 @@ Parameters:
 - *DV_MODEL_VARIABLES_FILES*: Array of files that need to go in a 'variables' subdirectory for a DV model
 - *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? If unspecified this is done, unless the model is responsible for the setting.
 - *DV_NORM_READS*: Should DV normalize reads itself? If unspecified this is not done, unless the model is responsible for the setting.
+- *DV_USE_GPUS*: Should DeepVariant use GPUs for calling variants? Default is 'true'.
 - *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs
 - *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs
 - *OTHER_MAKEEXAMPLES_ARG*: Additional arguments for the make_examples step of DeepVariant
 - *VG_CORES*: Number of cores to use when projecting the reads. Default is 16.
 - *VG_MEM*: Memory, in GB, to use when projecting the reads. Default is 120.
+- *BAM_PREPROCESS_MEM*: Memory, in GB, to use when preprocessing BAMs (left-shifting and preparing realignment targets). Default is 20.
+- *REALIGN_MEM*: Memory, in GB, to use for Abra indel realignment. Default is 40.
 - *CALL_CORES*: Number of cores to use when calling variants. Default is 8.
 - *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.
+- *MAKE_EXAMPLES_CORES*: Number of cores to use when making DeepVariant examples. Default is CALL_CORES.
+- *MAKE_EXAMPLES_MEM*: Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM.
+- *EVAL_CORES*: Number of cores to use when evaluating variant calls. Default is 8.
+- *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 60.
 - *VG_DOCKER*: Container image to use when running vg
+- *VG_SURJECT_DOCKER*: (OPTIONAL) Alternate container image to use when running vg surject
 
 Related
 topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [path list](#Path-list), [single-end reads](#Single-end-reads), [interleaved reads](#Interleaved-reads), [unmapped reads](#Unmapped-reads), [HPRC pangenomes](#HPRC-pangenomes).
@@ -315,6 +346,7 @@ Parameters:
 - *REFERENCE_PREFIX*: (Optional) Remove this off the beginning of sequence names in the VCF
 - *REMOVE_HOM_REFS*: (Optional) Should homozygous ref calls be removed? (might help if hap.py segfaults). Default 'false'.
 - *RUN_STANDALONE_VCFEVAL*: whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)
+- *EVAL_CORES*: Number of cores to use when evaluating variant calls. Default is 8.
 - *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 60.
 
 [Test locally](#testing-locally) with:
@@ -326,8 +358,13 @@ miniwdl run --as-me workflows/happy_evaluation.wdl -i params/happy_evaluation.js
 ### DeepVariant workflow
 
 Partial workflow to go from mapped reads (BAM) to small variant calls (VCF). Reads are pre-processed (e.g. indel
-realignment). DeepVariant then calls small variants. Includes optional comparison to a truth set. This is the calling
-half of the [Giraffe-DeepVariant workflow](#giraffe-deepvariant-workflow), for when the reads are already mapped.
+realignment). DeepVariant then calls small variants. This is the calling half of the
+[Giraffe-DeepVariant workflow](#giraffe-deepvariant-workflow), for when the reads are already mapped.
+
+Given a truth set, the calls are also compared to it. The comparison is done
+with [hap.py](https://github.com/Illumina/hap.py) by default, or
+with [Aardvark](https://github.com/PacificBiosciences/aardvark) if *EVALUATE_WITH_AARDVARK* is set. Aardvark needs to be
+told where the truth set is complete, so *EVALUATION_REGIONS_BED* is required when using it.
 
 - workflow file: [workflows/deepvariant.wdl](workflows/deepvariant.wdl)
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/DeepVariant:master?tab=info)
@@ -355,7 +392,9 @@ Parameters:
 - *MIN_MAPQ*: Minimum MAPQ of reads to use for calling. 4 is the lowest at which a mapping is more likely to be right than wrong. Default is the DeepVariant default for the model type.
 - *TRUTH_VCF*: Path to .vcf.gz to compare against
 - *TRUTH_VCF_INDEX*: Path to Tabix index for TRUTH_VCF
-- *EVALUATION_REGIONS_BED*: BED to evaluate against TRUTH_VCF on, where false positives will be counted
+- *EVALUATION_REGIONS_BED*: BED to evaluate against TRUTH_VCF on, where false positives will be counted. Required when EVALUATE_WITH_AARDVARK is set.
+- *EVALUATE_WITH_AARDVARK*: Should the calls be compared to TRUTH_VCF with Aardvark instead of hap.py? Default is 'false'.
+- *STRATIFICATION_ARCHIVE*: (OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the results down by. Only used when EVALUATE_WITH_AARDVARK is set.
 - *RESTRICT_REGIONS_BED*: BED to restrict comparison against TRUTH_VCF to
 - *TARGET_REGION*: contig or region to restrict evaluation to
 - *RUN_STANDALONE_VCFEVAL*: whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)
@@ -377,6 +416,7 @@ Parameters:
 - *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.
 - *MAKE_EXAMPLES_CORES*: Number of cores to use when making DeepVariant examples. Default is CALL_CORES.
 - *MAKE_EXAMPLES_MEM*: Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM.
+- *EVAL_CORES*: Number of cores to use when evaluating variant calls. Default is 8.
 - *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 60.
 
 ### Aardvark workflow
@@ -436,7 +476,9 @@ To compare two versions of `vg surject` while mapping with the *candidate* vg in
 
 To compare two versions of `vg giraffe` for mapping while surjecting the same way in both runs, set *BASELINE_VG_SURJECT_DOCKER* to match the candidate, or *CANDIDATE_VG_SURJECT_DOCKER* to match the baseline.
 
-The outputs are the Aardvark summary and full output directory for each run, plus each run's VCF.
+Surjection settings can be compared the same way as vg versions: give the two runs different *BASELINE_VG_SURJECT_OPTIONS* and *CANDIDATE_VG_SURJECT_OPTIONS*.
+
+Each run evaluates its own calls against the truth set with Aardvark, so the outputs are the Aardvark summary and full output directory for each run, plus each run's VCF.
 
 - workflow file: [workflows/acceptance_test.wdl](workflows/acceptance_test.wdl)
 
@@ -475,7 +517,7 @@ Parameters:
 - *OUTPUT_BAM*: Should the merged BAM be saved for each run? Default is 'false'.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
 - *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
-- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20,000,000.
+- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 million.
 - *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index.
 - *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.
 - *REFERENCE_PREFIX*: Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)
@@ -632,9 +674,9 @@ and they can change without notice.
   graph if they weren't provided.
 - [workflows/internal/surject.wdl](workflows/internal/surject.wdl) (`Surject`): project GAF chunks onto the reference
   paths with `vg surject` and merge them into one sorted BAM.
-- [workflows/internal/giraffe_indexes.wdl](workflows/internal/giraffe_indexes.wdl) (`GiraffeIndexes`): produce the GBZ,
-  distance, minimizer and zipcodes indexes `vg giraffe` needs, building whatever wasn't provided and haplotype sampling
-  the graph if asked.
+- [workflows/internal/index_for_giraffe.wdl](workflows/internal/index_for_giraffe.wdl) (`IndexForGiraffe`): produce the
+  GBZ, distance, minimizer and zipcodes indexes `vg giraffe` needs, building whatever wasn't provided and haplotype
+  sampling the graph if asked.
 
 ### Going further
 

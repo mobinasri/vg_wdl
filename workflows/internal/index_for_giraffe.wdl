@@ -3,7 +3,7 @@ version 1.0
 import "../../tasks/vg_indexing.wdl" as index
 import "../haplotype_sampling.wdl" as hapl
 
-workflow GiraffeIndexes {
+workflow IndexForGiraffe {
     meta {
         description: "## Giraffe indexes workflow \n Produce the set of indexes that `vg giraffe` needs for one graph: a GBZ and the matching distance, minimizer and zipcodes indexes. Indexes that are passed in are used as they are, and the rest are built with the given vg container. When haplotype sampling is on, the graph is replaced by a sample-specific sampled graph and all of the mapping indexes are rebuilt for it, so the reads to sample from are required."
     }

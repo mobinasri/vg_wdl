@@ -1,7 +1,7 @@
 version 1.0
 
-import "./deepvariant.wdl" as dv_wf
 import "./giraffe.wdl" as giraffe_wf
+import "./giraffe_and_deepvariant_fromGAF.wdl" as gaf_wf
 import "./internal/prepare_reference.wdl" as reference_wf
 
 
@@ -29,7 +29,7 @@ workflow GiraffeDeepVariant {
         OUTPUT_UNMAPPED_BAM: "Should an unmapped reads BAM be saved? Default is false."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
-        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
+        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 million."
         CONTIGS: "(OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index."
         PATH_LIST_FILE: "(OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths."
         REFERENCE_PREFIX: "Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)"
@@ -48,7 +48,9 @@ workflow GiraffeDeepVariant {
         GIRAFFE_OPTIONS: "(OPTIONAL) Extra command line options for Giraffe mapper"
         TRUTH_VCF: "Path to .vcf.gz to compare against"
         TRUTH_VCF_INDEX: "Path to Tabix index for TRUTH_VCF"
-        EVALUATION_REGIONS_BED: "BED to evaluate against TRUTH_VCF on, where false positives will be counted"
+        EVALUATION_REGIONS_BED: "BED to evaluate against TRUTH_VCF on, where false positives will be counted. Required when EVALUATE_WITH_AARDVARK is set."
+        EVALUATE_WITH_AARDVARK: "Should the calls be compared to TRUTH_VCF with Aardvark instead of hap.py? Default is 'false'."
+        STRATIFICATION_ARCHIVE: "(OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the results down by. Only used when EVALUATE_WITH_AARDVARK is set."
         RESTRICT_REGIONS_BED: "BED to restrict comparison against TRUTH_VCF to"
         TARGET_REGION: "contig or region to restrict evaluation to"
         RUN_STANDALONE_VCFEVAL: "whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)"
@@ -79,6 +81,7 @@ workflow GiraffeDeepVariant {
         CALL_MEM: "Memory, in GB, to use when calling variants. Default is 50."
         MAKE_EXAMPLES_CORES: "Number of cores to use when making DeepVariant examples. Default is CALL_CORES."
         MAKE_EXAMPLES_MEM: "Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM."
+        EVAL_CORES: "Number of cores to use when evaluating variant calls. Default is 8."
         EVAL_MEM: "Memory, in GB, to use when evaluating variant calls. Default is 60."
         VG_DOCKER: "Container image to use when running vg"
         VG_GIRAFFE_DOCKER: "Alternate container image to use when running vg giraffe mapping"
@@ -123,6 +126,8 @@ workflow GiraffeDeepVariant {
         File? TRUTH_VCF
         File? TRUTH_VCF_INDEX
         File? EVALUATION_REGIONS_BED
+        Boolean EVALUATE_WITH_AARDVARK = false
+        File? STRATIFICATION_ARCHIVE
         File? RESTRICT_REGIONS_BED
         String? TARGET_REGION
         Boolean RUN_STANDALONE_VCFEVAL = true
@@ -153,6 +158,7 @@ workflow GiraffeDeepVariant {
         Int CALL_MEM = 50
         Int MAKE_EXAMPLES_CORES = CALL_CORES
         Int MAKE_EXAMPLES_MEM = CALL_MEM
+        Int EVAL_CORES = 8
         Int EVAL_MEM = 60
         String VG_DOCKER = "quay.io/vgteam/vg:v1.64.0"
         String? VG_GIRAFFE_DOCKER
@@ -180,9 +186,8 @@ workflow GiraffeDeepVariant {
     File reference_index_file = PrepareReference.reference_index_file
     File reference_dict_file = PrepareReference.reference_dict_file
 
-    # Run the giraffe mapping workflow.
-    # We don't do postprocessing in the Giraffe workflow, just the DV workflow.
-    # Otherwise we'd split to contig BAMs, process, re-merge, and re-split.
+    # Map the reads. Surjection and everything after it happens in the from-GAF
+    # workflow, so this only maps and hands back the alignment chunks.
     call giraffe_wf.Giraffe {
         input:
         INPUT_READ_FILE_1=INPUT_READ_FILE_1,
@@ -196,9 +201,10 @@ workflow GiraffeDeepVariant {
         ZIPCODES_FILE=ZIPCODES_FILE,
         HAPL_FILE=HAPL_FILE,
         SAMPLE_NAME=SAMPLE_NAME,
-        OUTPUT_SINGLE_BAM=true,
+        OUTPUT_SINGLE_BAM=false,
         OUTPUT_CALLING_BAMS=false,
         OUTPUT_GAF=OUTPUT_GAF,
+        OUTPUT_GAF_CHUNKS=true,
         PAIRED_READS=PAIRED_READS,
         INTERLEAVED_READS=INTERLEAVED_READS,
         READS_PER_CHUNK=READS_PER_CHUNK,
@@ -225,19 +231,18 @@ workflow GiraffeDeepVariant {
         KMER_COUNTING_MEM=KMER_COUNTING_MEM,
         HAPLOTYPE_INDEXING_MEM=HAPLOTYPE_INDEXING_MEM,
         VG_DOCKER=VG_DOCKER,
-        VG_GIRAFFE_DOCKER=VG_GIRAFFE_DOCKER,
-        VG_SURJECT_DOCKER=VG_SURJECT_DOCKER
+        VG_GIRAFFE_DOCKER=VG_GIRAFFE_DOCKER
     }
 
-    # Run the DeepVariant calling workflow
-    call dv_wf.DeepVariant {
+    # Surject the alignments, call variants, and compare to a truth set if one
+    # was given.
+    call gaf_wf.GiraffeDeepVariantFromGAF {
         input:
-        MERGED_BAM_FILE=select_first([Giraffe.output_bam]),
-        MERGED_BAM_FILE_INDEX=select_first([Giraffe.output_bam_index]),
+        GAF_CHUNKS=select_first([Giraffe.output_gaf_chunks]),
+        GBZ_FILE=GBZ_FILE,
         SAMPLE_NAME=SAMPLE_NAME,
         OUTPUT_SINGLE_BAM=OUTPUT_SINGLE_BAM,
-        OUTPUT_CALLING_BAMS=OUTPUT_CALLING_BAMS,
-        OUTPUT_UNMAPPED_BAM=OUTPUT_UNMAPPED_BAM,
+        PAIRED_READS=PAIRED_READS,
         PATH_LIST_FILE=pipeline_path_list_file,
         REFERENCE_PREFIX=REFERENCE_PREFIX,
         REFERENCE_FILE=reference_file,
@@ -245,13 +250,17 @@ workflow GiraffeDeepVariant {
         REFERENCE_DICT_FILE=reference_dict_file,
         HAPLOID_CONTIGS=HAPLOID_CONTIGS,
         PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
+        PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
         LEFTALIGN_BAM=LEFTALIGN_BAM,
         REALIGN_INDELS=REALIGN_INDELS,
         REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
         MIN_MAPQ=MIN_MAPQ,
+        MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
         TRUTH_VCF=TRUTH_VCF,
         TRUTH_VCF_INDEX=TRUTH_VCF_INDEX,
         EVALUATION_REGIONS_BED=EVALUATION_REGIONS_BED,
+        EVALUATE_WITH_AARDVARK=EVALUATE_WITH_AARDVARK,
+        STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
         RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
         TARGET_REGION=TARGET_REGION,
         RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
@@ -267,27 +276,34 @@ workflow GiraffeDeepVariant {
         DV_USE_GPUS=DV_USE_GPUS,
         DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
         DV_GPU_DOCKER=DV_GPU_DOCKER,
+        VG_CORES=MAP_CORES,
+        VG_MEM=MAP_MEM,
         BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
         REALIGN_MEM=REALIGN_MEM,
         CALL_CORES=CALL_CORES,
         CALL_MEM=CALL_MEM,
         MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
         MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
-        EVAL_MEM=EVAL_MEM
+        EVAL_CORES=EVAL_CORES,
+        EVAL_MEM=EVAL_MEM,
+        VG_DOCKER=VG_DOCKER,
+        VG_SURJECT_DOCKER=VG_SURJECT_DOCKER
     }
-    
+
     output {
-        File? output_vcfeval_evaluation_archive = DeepVariant.output_vcfeval_evaluation_archive
-        File? output_happy_evaluation_archive = DeepVariant.output_happy_evaluation_archive
-        File output_vcf = DeepVariant.output_vcf
-        File output_vcf_index = DeepVariant.output_vcf_index
-        File output_gvcf = DeepVariant.output_gvcf
-        File output_gvcf_index = DeepVariant.output_gvcf_index
+        File? output_vcfeval_evaluation_archive = GiraffeDeepVariantFromGAF.output_vcfeval_evaluation_archive
+        File? output_happy_evaluation_archive = GiraffeDeepVariantFromGAF.output_happy_evaluation_archive
+        File? output_aardvark_summary = GiraffeDeepVariantFromGAF.output_aardvark_summary
+        Array[File]? output_aardvark_all_files = GiraffeDeepVariantFromGAF.output_aardvark_all_files
+        File output_vcf = GiraffeDeepVariantFromGAF.output_vcf
+        File output_vcf_index = GiraffeDeepVariantFromGAF.output_vcf_index
+        File output_gvcf = GiraffeDeepVariantFromGAF.output_gvcf
+        File output_gvcf_index = GiraffeDeepVariantFromGAF.output_gvcf_index
         File? output_gaf = Giraffe.output_gaf
-        File? output_bam = DeepVariant.output_bam
-        File? output_bam_index = DeepVariant.output_bam_index
-        Array[File]? output_calling_bams = DeepVariant.output_calling_bams
-        Array[File]? output_calling_bam_indexes = DeepVariant.output_calling_bam_indexes
-        File? output_unmapped_bam = DeepVariant.output_unmapped_bam
-    }   
+        File? output_bam = GiraffeDeepVariantFromGAF.output_bam
+        File? output_bam_index = GiraffeDeepVariantFromGAF.output_bam_index
+        Array[File]? output_calling_bams = GiraffeDeepVariantFromGAF.output_calling_bams
+        Array[File]? output_calling_bam_indexes = GiraffeDeepVariantFromGAF.output_calling_bam_indexes
+        File? output_unmapped_bam = GiraffeDeepVariantFromGAF.output_unmapped_bam
+    }
 }

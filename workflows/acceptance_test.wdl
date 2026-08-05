@@ -1,13 +1,11 @@
 version 1.0
 
 import "../tasks/bioinfo_utils.wdl" as utils
-import "./aardvark_evaluation.wdl" as aardvark_wf
-import "./deepvariant.wdl" as dv_wf
 import "./giraffe.wdl" as giraffe_wf
-import "./internal/giraffe_indexes.wdl" as index_wf
+import "./giraffe_and_deepvariant_fromGAF.wdl" as gaf_wf
+import "./internal/index_for_giraffe.wdl" as index_wf
 import "./internal/prepare_reference.wdl" as reference_wf
 import "./internal/split_reads.wdl" as reads_wf
-import "./internal/surject.wdl" as surject_wf
 
 workflow AcceptanceTest {
 
@@ -49,7 +47,7 @@ workflow AcceptanceTest {
         OUTPUT_BAM: "Should the merged BAM be saved for each run? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
-        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
+        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 million."
         CONTIGS: "(OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index."
         PATH_LIST_FILE: "(OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths."
         REFERENCE_PREFIX: "Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)"
@@ -246,7 +244,7 @@ workflow AcceptanceTest {
     # Indexes: one set for both runs, or one set per run          #
     ###############################################################
 
-    call index_wf.GiraffeIndexes as baselineIndexes {
+    call index_wf.IndexForGiraffe as baselineIndexes {
         input:
         GBZ_FILE=GBZ_FILE,
         DIST_FILE=DIST_FILE,
@@ -268,7 +266,7 @@ workflow AcceptanceTest {
     if (CANDIDATE_SEPARATE_INDEXES) {
         # The candidate gets its own indexes, from its own inputs where they are
         # given and from its own vg where they are not.
-        call index_wf.GiraffeIndexes as candidateIndexes {
+        call index_wf.IndexForGiraffe as candidateIndexes {
             input:
             GBZ_FILE=select_first([CANDIDATE_GBZ_FILE, GBZ_FILE]),
             DIST_FILE=CANDIDATE_DIST_FILE,
@@ -372,67 +370,90 @@ workflow AcceptanceTest {
     ###############################################################
 
     # Surjection has to use the graph the reads were mapped to, because the
-    # alignments name its nodes.
-    call surject_wf.Surject as baselineSurjection {
+    # alignments name its nodes. No truth set goes in here, so no hap.py runs:
+    # the comparison is Aardvark's, below.
+    call gaf_wf.GiraffeDeepVariantFromGAF as baselineCalling {
         input:
         GAF_CHUNKS=baseline_gaf_chunks,
         GBZ_FILE=baselineIndexes.gbz_file,
-        PATH_LIST_FILE=PrepareReference.path_list_file,
-        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
-        REFERENCE_PREFIX=REFERENCE_PREFIX,
         SAMPLE_NAME=SAMPLE_NAME,
+        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
+        OUTPUT_CALLING_BAMS=false,
         PAIRED_READS=PAIRED_READS,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
+        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
+        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
         PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+        LEFTALIGN_BAM=LEFTALIGN_BAM,
+        REALIGN_INDELS=REALIGN_INDELS,
+        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
+        MIN_MAPQ=MIN_MAPQ,
         MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+        TRUTH_VCF=TRUTH_VCF,
+        TRUTH_VCF_INDEX=truth_vcf_index,
+        EVALUATION_REGIONS_BED=EVALUATION_REGIONS_BED,
+        EVALUATE_WITH_AARDVARK=true,
+        STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
         SURJECT_OPTIONS=BASELINE_VG_SURJECT_OPTIONS,
-        SURJECT_CORES=MAP_CORES,
-        SURJECT_MEM=MAP_MEM,
+        DV_MODEL_TYPE=DV_MODEL_TYPE,
+        DV_MODEL_META=DV_MODEL_META,
+        DV_MODEL_INDEX=DV_MODEL_INDEX,
+        DV_MODEL_DATA=DV_MODEL_DATA,
+        DV_MODEL_FILES=DV_MODEL_FILES,
+        DV_MODEL_VARIABLES_FILES=DV_MODEL_VARIABLES_FILES,
+        DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
+        DV_NORM_READS=DV_NORM_READS,
+        OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
+        DV_USE_GPUS=DV_USE_GPUS,
+        DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
+        DV_GPU_DOCKER=DV_GPU_DOCKER,
+        VG_CORES=MAP_CORES,
+        VG_MEM=MAP_MEM,
         BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
-        VG_DOCKER=baseline_surject_docker
+        REALIGN_MEM=REALIGN_MEM,
+        CALL_CORES=CALL_CORES,
+        CALL_MEM=CALL_MEM,
+        MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
+        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
+        EVAL_CORES=AARDVARK_CORES,
+        EVAL_MEM=AARDVARK_MEM,
+        VG_DOCKER=BASELINE_VG_DOCKER,
+        VG_SURJECT_DOCKER=baseline_surject_docker
     }
 
-    call surject_wf.Surject as candidateSurjection {
+    call gaf_wf.GiraffeDeepVariantFromGAF as candidateCalling {
         input:
         GAF_CHUNKS=candidate_gaf_chunks,
         # When mapping is shared this is the baseline's graph, which is the one
         # those alignments were made against.
         GBZ_FILE=candidate_gbz_file,
-        PATH_LIST_FILE=PrepareReference.path_list_file,
-        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
-        REFERENCE_PREFIX=REFERENCE_PREFIX,
         SAMPLE_NAME=SAMPLE_NAME,
+        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
+        OUTPUT_CALLING_BAMS=false,
         PAIRED_READS=PAIRED_READS,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
+        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
+        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
         PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+        LEFTALIGN_BAM=LEFTALIGN_BAM,
+        REALIGN_INDELS=REALIGN_INDELS,
+        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
+        MIN_MAPQ=MIN_MAPQ,
         MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+        TRUTH_VCF=TRUTH_VCF,
+        TRUTH_VCF_INDEX=truth_vcf_index,
+        EVALUATION_REGIONS_BED=EVALUATION_REGIONS_BED,
+        EVALUATE_WITH_AARDVARK=true,
+        STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
         SURJECT_OPTIONS=CANDIDATE_VG_SURJECT_OPTIONS,
-        SURJECT_CORES=MAP_CORES,
-        SURJECT_MEM=MAP_MEM,
-        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
-        VG_DOCKER=candidate_surject_docker
-    }
-
-    ###############################################################
-    # Call: twice, once per surjected BAM                          #
-    ###############################################################
-
-    call dv_wf.DeepVariant as baselineCalling {
-        input:
-        MERGED_BAM_FILE=baselineSurjection.bam_file,
-        MERGED_BAM_FILE_INDEX=baselineSurjection.bam_index_file,
-        SAMPLE_NAME=SAMPLE_NAME,
-        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
-        OUTPUT_CALLING_BAMS=false,
-        PATH_LIST_FILE=PrepareReference.path_list_file,
-        REFERENCE_PREFIX=REFERENCE_PREFIX,
-        REFERENCE_FILE=PrepareReference.reference_file,
-        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
-        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
-        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
-        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
-        LEFTALIGN_BAM=LEFTALIGN_BAM,
-        REALIGN_INDELS=REALIGN_INDELS,
-        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
-        MIN_MAPQ=MIN_MAPQ,
         DV_MODEL_TYPE=DV_MODEL_TYPE,
         DV_MODEL_META=DV_MODEL_META,
         DV_MODEL_INDEX=DV_MODEL_INDEX,
@@ -445,91 +466,27 @@ workflow AcceptanceTest {
         DV_USE_GPUS=DV_USE_GPUS,
         DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
         DV_GPU_DOCKER=DV_GPU_DOCKER,
+        VG_CORES=MAP_CORES,
+        VG_MEM=MAP_MEM,
         BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
         REALIGN_MEM=REALIGN_MEM,
         CALL_CORES=CALL_CORES,
         CALL_MEM=CALL_MEM,
         MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
-        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM
-    }
-
-    call dv_wf.DeepVariant as candidateCalling {
-        input:
-        MERGED_BAM_FILE=candidateSurjection.bam_file,
-        MERGED_BAM_FILE_INDEX=candidateSurjection.bam_index_file,
-        SAMPLE_NAME=SAMPLE_NAME,
-        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
-        OUTPUT_CALLING_BAMS=false,
-        PATH_LIST_FILE=PrepareReference.path_list_file,
-        REFERENCE_PREFIX=REFERENCE_PREFIX,
-        REFERENCE_FILE=PrepareReference.reference_file,
-        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
-        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
-        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
-        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
-        LEFTALIGN_BAM=LEFTALIGN_BAM,
-        REALIGN_INDELS=REALIGN_INDELS,
-        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
-        MIN_MAPQ=MIN_MAPQ,
-        DV_MODEL_TYPE=DV_MODEL_TYPE,
-        DV_MODEL_META=DV_MODEL_META,
-        DV_MODEL_INDEX=DV_MODEL_INDEX,
-        DV_MODEL_DATA=DV_MODEL_DATA,
-        DV_MODEL_FILES=DV_MODEL_FILES,
-        DV_MODEL_VARIABLES_FILES=DV_MODEL_VARIABLES_FILES,
-        DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
-        DV_NORM_READS=DV_NORM_READS,
-        OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
-        DV_USE_GPUS=DV_USE_GPUS,
-        DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
-        DV_GPU_DOCKER=DV_GPU_DOCKER,
-        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
-        REALIGN_MEM=REALIGN_MEM,
-        CALL_CORES=CALL_CORES,
-        CALL_MEM=CALL_MEM,
-        MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
-        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM
-    }
-
-    ###############################################################
-    # Evaluation of both call sets against the same truth         #
-    ###############################################################
-
-    call aardvark_wf.AardvarkEvaluation as baselineEvaluation {
-        input:
-        QUERY_VCF=baselineCalling.output_vcf,
-        QUERY_VCF_INDEX=baselineCalling.output_vcf_index,
-        TRUTH_VCF=TRUTH_VCF,
-        TRUTH_VCF_INDEX=truth_vcf_index,
-        REFERENCE_FILE=PrepareReference.reference_file,
-        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
-        REGIONS_BED=EVALUATION_REGIONS_BED,
-        STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
-        SAMPLE_NAME=SAMPLE_NAME + ".baseline",
-        THREADS=AARDVARK_CORES,
-        EVAL_MEM=AARDVARK_MEM
-    }
-
-    call aardvark_wf.AardvarkEvaluation as candidateEvaluation {
-        input:
-        QUERY_VCF=candidateCalling.output_vcf,
-        QUERY_VCF_INDEX=candidateCalling.output_vcf_index,
-        TRUTH_VCF=TRUTH_VCF,
-        TRUTH_VCF_INDEX=truth_vcf_index,
-        REFERENCE_FILE=PrepareReference.reference_file,
-        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
-        REGIONS_BED=EVALUATION_REGIONS_BED,
-        STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
-        SAMPLE_NAME=SAMPLE_NAME + ".candidate",
-        THREADS=AARDVARK_CORES,
-        EVAL_MEM=AARDVARK_MEM
+        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
+        EVAL_CORES=AARDVARK_CORES,
+        EVAL_MEM=AARDVARK_MEM,
+        VG_DOCKER=CANDIDATE_VG_DOCKER,
+        VG_SURJECT_DOCKER=candidate_surject_docker
     }
 
     output {
-        File baseline_aardvark_summary = baselineEvaluation.aardvark_summary
-        File candidate_aardvark_summary = candidateEvaluation.aardvark_summary
-        Array[File] baseline_aardvark_all_files = baselineEvaluation.aardvark_all_files
-        Array[File] candidate_aardvark_all_files = candidateEvaluation.aardvark_all_files
+        # Each side is evaluated inside its own calling run, against the same
+        # truth set, so the summaries are already there.
+        File? baseline_aardvark_summary = baselineCalling.output_aardvark_summary
+        File? candidate_aardvark_summary = candidateCalling.output_aardvark_summary
+        Array[File]? baseline_aardvark_all_files = baselineCalling.output_aardvark_all_files
+        Array[File]? candidate_aardvark_all_files = candidateCalling.output_aardvark_all_files
         File baseline_vcf = baselineCalling.output_vcf
         File baseline_vcf_index = baselineCalling.output_vcf_index
         File candidate_vcf = candidateCalling.output_vcf

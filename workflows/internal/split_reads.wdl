@@ -17,7 +17,7 @@ workflow SplitReads {
         OUTPUT_WHOLE_READS: "Should the whole, un-split FASTQs be handed back as well as the chunks? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
-        READS_PER_CHUNK: "Number of reads to put in each chunk. Default 20 000 000."
+        READS_PER_CHUNK: "Number of reads to put in each chunk. Default 20 million."
         SPLIT_READ_CORES: "Number of cores to use when converting and splitting the reads. Default is 8."
         SPLIT_READ_MEM: "Memory, in GB, to use when converting the reads. Default is 50."
     }

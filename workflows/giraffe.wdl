@@ -33,7 +33,7 @@ workflow Giraffe {
         OUTPUT_GAF_CHUNKS: "Should the unmerged GAF chunks be saved? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
-        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
+        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 million."
         PATH_LIST_FILE: "(OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths. If using REFERENCE_PREFIX, contig names in here should have the prefix."
         CONTIGS: "(OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index. If using REFERENCE_PREFIX, contig names in here should have the prefix."
         REFERENCE_PREFIX: "Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)"
