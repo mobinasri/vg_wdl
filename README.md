@@ -63,7 +63,7 @@ The full workflow to go from sequencing reads (FASTQs, CRAM) to small variant ca
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/GiraffeDeepVariant:master?tab=info)
 - If you use this workflow, please cite [the HPRC preprint](#cite-HPRC).
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz  
 - *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz  
@@ -159,7 +159,7 @@ realignment).
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/Giraffe:master?tab=info)
 - If you use this workflow, please cite [the HPRC preprint](#cite-HPRC).
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz
 - *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz
@@ -242,7 +242,7 @@ with [DeepVariant](https://github.com/google/deepvariant).
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:master?tab=info)
 - If you use this workflow, please cite [the HPRC preprint](#cite-HPRC).
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *INPUT_GAF*: Input gzipped GAF file
 - *GBZ_FILE*: Path to .gbz index file
@@ -301,7 +301,7 @@ Evaluation of the small variant calls using [hap.py](https://github.com/Illumina
 - workflow file: [workflows/happy_evaluation.wdl](workflows/happy_evaluation.wdl)
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/HappyEvaluation:master?tab=info)
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *VCF*: bgzipped VCF with variant calls
 - *VCF_INDEX*: (Optional) If specified, use this tabix index for the VCF instead of indexing it
@@ -332,7 +332,7 @@ half of the [Giraffe-DeepVariant workflow](#giraffe-deepvariant-workflow), for w
 - workflow file: [workflows/deepvariant.wdl](workflows/deepvariant.wdl)
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/DeepVariant:master?tab=info)
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *MERGED_BAM_FILE*: The all-contigs sorted BAM to call with.
 - *MERGED_BAM_FILE_INDEX*: The .bai index for the input BAM file
@@ -385,7 +385,7 @@ Evaluation of the small variant calls using [Aardvark](https://github.com/Pacifi
 
 - workflow file: [workflows/aardvark_evaluation.wdl](workflows/aardvark_evaluation.wdl)
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *QUERY_VCF*: bgzipped VCF with variant calls to evaluate
 - *QUERY_VCF_INDEX*: (Optional) tabix index for QUERY_VCF; will be indexed if not provided
@@ -405,29 +405,15 @@ Parameters (semi-auto-generated from the parameter_meta section):
 miniwdl run --as-me workflows/aardvark_evaluation.wdl -i params/aardvark_evaluation.json
 ```
 
-### Giraffe acceptance test workflow
+### Acceptance testing workflow
 
-Map and call one sample two ways, with two different vg containers, and evaluate both call sets against the same truth
-set with [Aardvark](https://github.com/PacificBiosciences/aardvark), to see what changing vg does to variant calling
-accuracy. One run is the baseline (the known-good vg) and one is the candidate (the vg under test). Variants are called
-with [DeepVariant](https://github.com/google/deepvariant), which is the same in both runs.
+Workflow for comparing the calling accuracy for two different vg versions, a "candidate" and a "baseline".
 
-The workflow runs in stages: index, map, surject, call, evaluate. The two runs are meant to differ only in the vg
-container, so everything they can share is computed once and handed to both: the reads (converted from a CRAM and split
-into chunks once), the contig list, the reference, the indexes, and the alignments when both runs would map identically.
-Sharing the contig list and reference is what makes the two call sets comparable, so those are always shared. The
-indexes are shared by default, and built with the baseline vg if they aren't passed in.
+Runs indexing, mapping, and surjection stages, followed by calling with [DeepVariant](https://github.com/google/deepvariant) and evaluation against a truth set with [Aardvark](https://github.com/PacificBiosciences/aardvark). You can use different vg versions or the same vg version for each stage; stages that don't need to run separately will be run once. By default, indexing is done once, and mapping and surjection are done independently.
 
-If the candidate vg cannot use the baseline vg's indexes, set *CANDIDATE_SEPARATE_INDEXES*. The candidate run then uses
-the *CANDIDATE_\** index inputs, and anything not passed there is built with the candidate container. With haplotype
-sampling on, the sampled graph and its indexes count as indexes: they are made once with the baseline vg by default,
-and once per run when *CANDIDATE_SEPARATE_INDEXES* is set.
+Indexes can be provided to skip the indexing stage. If the candidate vg cannot use the baseline vg's indexes, set *CANDIDATE_SEPARATE_INDEXES*. The candidate run then uses the *CANDIDATE_\** index inputs, and anything not passed there is built with the candidate container. With haplotype sampling on, the sampled graph and its indexes count as indexes: they are made once with the baseline vg by default, and once per run when *CANDIDATE_SEPARATE_INDEXES* is set.
 
-Each run uses its side's vg for mapping and for surjection, unless given a container for one of those stages
-specifically. Giving both runs the same container for a stage takes that stage out of the comparison, and when that
-stage is mapping the reads are only mapped once and the same alignments are surjected both ways.
-
-So to compare two versions of `vg surject` while mapping with the baseline vg in both runs:
+To compare two versions of `vg surject` while mapping with the baseline vg in both runs:
 
 ```json
 {
@@ -437,8 +423,7 @@ So to compare two versions of `vg surject` while mapping with the baseline vg in
 }
 ```
 
-and to compare the same two versions of `vg surject` while mapping with the *candidate* vg instead, point both mapping
-containers at the candidate:
+To compare two versions of `vg surject` while mapping with the *candidate* vg in both runs:
 
 ```json
 {
@@ -449,14 +434,13 @@ containers at the candidate:
 }
 ```
 
-To compare two versions of `vg giraffe` while surjecting the same way in both runs, give both sides the same surject
-container instead. Mapping then runs twice, because that is what is being compared.
+To compare two versions of `vg giraffe` for mapping while surjecting the same way in both runs, set *BASELINE_VG_SURJECT_DOCKER* to match the candidate, or *CANDIDATE_VG_SURJECT_DOCKER* to match the baseline.
 
 The outputs are the Aardvark summary and full output directory for each run, plus each run's VCF.
 
 - workflow file: [workflows/giraffe_acceptance_test.wdl](workflows/giraffe_acceptance_test.wdl)
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *BASELINE_VG_DOCKER*: Container image to use when running vg for the baseline run, which is the known-good version to compare against
 - *CANDIDATE_VG_DOCKER*: Container image to use when running vg for the candidate run, which is the version under test
@@ -539,7 +523,7 @@ Parameters (semi-auto-generated from the parameter_meta section):
 Related
 topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [CRAM input](#CRAM-input), [reads chunking](#Reads-chunking), [path list](#Path-list), [single-end reads](#Single-end-reads), [interleaved reads](#Interleaved-reads), [HPRC pangenomes](#HPRC-pangenomes).
 
-[Test locally](#testing-locally) with (set *CANDIDATE_VG_DOCKER* to the container you actually want to test):
+[Test locally](#testing-locally) with:
 
 ```sh
 miniwdl run --as-me workflows/giraffe_acceptance_test.wdl -i params/giraffe_acceptance_test.json
@@ -554,7 +538,7 @@ This workflow converts reads aligned to a pangenome in a GAF file to a sorted an
 - workflow file: [workflows/sort_graph_aligned_reads.wdl](workflows/sort_graph_aligned_reads.wdl)
 - [Dockstore page](https://dockstore.org/workflows/github.com/vgteam/vg_wdl/sortGraphAlignedReads:master?tab=info)
 
-Parameters (semi-auto-generated from the parameter_meta section):
+Parameters:
 
 - *GAF_FILE*: GAF file to convert and sort.
 - *GBZ_FILE*: the GBZ index of the graph
@@ -584,7 +568,8 @@ Workflow for creating a personalized pangenome with [haplotype sampling](https:/
 - [workflow file](https://github.com/vgteam/vg_wdl/blob/master/workflows/haplotype_sampling.wdl)
 - [parameter file](https://github.com/vgteam/vg_wdl/blob/master/params/haplotype_sampling.json)
 
-Parameters  (semi-auto-generated from the parameter_meta section):
+Parameters:
+
 - *GBZ_FILE*: Path to .gbz index file
 - *INPUT_READ_FILE_FIRST*: Input sample 1st read pair fastq.gz
 - *INPUT_READ_FILE_SECOND*: Input sample 2st read pair fastq.gz
