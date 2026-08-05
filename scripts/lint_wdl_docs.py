@@ -2,9 +2,9 @@
 """
 Check that the workflows and their documentation agree.
 
-README sections are matched to workflows by looking for a link to the workflow
-file in a section, and only parameter names are compared; the descriptions may
-differ.
+README sections are matched to workflows by looking for a reference to the
+workflow file in a section, and only parameter names are compared; the
+descriptions may differ.
 
 Run from the root of the repository, or pass the root as the only argument.
 """
@@ -12,203 +12,176 @@ Run from the root of the repository, or pass the root as the only argument.
 import os
 import re
 import sys
+from pathlib import Path
+from typing import Iterator
 
 import WDL
 
-# Where each kind of file lives, relative to the repository root.
-WORKFLOW_DIR = "workflows"
-# Subworkflows that exist only to be called by other workflows. They are held to
-# the parameter_meta rules like anything else, but they are plumbing, so the
-# README describes them in a sentence instead of documenting their parameters.
-INTERNAL_DIR = os.path.join("workflows", "internal")
+# This is the README file to check workflows against
 README = "README.md"
-# Files that are known not to pass and that nobody is expected to fix. See the
-# file itself for what belongs in it.
-EXEMPTIONS = os.path.join("scripts", "doc_lint_exemptions.txt")
+# This directory has all the workflows 
+WORKFLOW_DIR = Path("workflows")
+# Subworkflows that exist only to be called by other workflows.
+# We skip these.
+INTERNAL_DIR = WORKFLOW_DIR / "internal"
+# We also skip the workflows listed in this file.
+EXEMPTIONS = Path("scripts") / "doc_lint_exemptions.txt"
 
-# A parameter as the README lists it: "- *NAME*: description".
+# Regex to match a parameter entry in th README: "- *NAME*: description".
 README_PARAMETER_RE = re.compile(r"^\s*[-*]\s+\*([A-Za-z_][A-Za-z_0-9]*)\*\s*:")
-# A Markdown section heading, at any depth.
+# Regex to match a Markdown section heading line
 README_HEADING_RE = re.compile(r"^(#+)\s+(.*\S)\s*$")
 
 
-class Problems:
+class Report:
     """
-    Collects problems as they are found, so that one run reports all of them
-    instead of stopping at the first.
+    Class for counting and reporting lint problems.
     """
 
-    def __init__(self):
-        self.count = 0
+    def __init__(self) -> None:
+        self.problems = 0
 
-    def report(self, where, message):
+    def problem(self, where: str, message: str) -> None:
+        """
+        Report a lint problem at a particular place with a particular message.
+        """
         print("{}: {}".format(where, message), file=sys.stderr)
-        self.count += 1
+        self.problems += 1
 
-
-def read_exemptions(path):
+class Readme:
     """
-    Read the set of exempt file paths. Blank lines and #-comments are ignored.
-    """
-
-    exempt = set()
-    if not os.path.exists(path):
-        return exempt
-    with open(path) as f:
-        for line in f:
-            line = line.split("#", 1)[0].strip()
-            if line:
-                exempt.add(line)
-    return exempt
-
-
-def find_wdls(directory):
-    """
-    Return the paths of every .wdl file at or below a directory, sorted. This
-    picks up workflows/internal, where the subworkflows that exist only to be
-    called by other workflows live.
+    Represents the README and allows pulling documented workflow inputs from it.
     """
 
-    found = []
-    for parent, _, names in os.walk(directory):
-        found += [os.path.join(parent, n) for n in names if n.endswith(".wdl")]
-    return sorted(found)
+    def __init__(self, path: Path) -> None:
+        """
+        Parse the README.
+        """
 
-
-def load_documents(directory):
-    """
-    Parse every .wdl file at or below a directory. Returns a list of
-    (path, document).
-
-    Files that don't parse are skipped: making sense of them is ``miniwdl
-    check``'s job, and it runs alongside this.
-    """
-
-    documents = []
-    for path in find_wdls(directory):
-        try:
-            documents.append((path, WDL.load(path)))
-        except Exception as e:
-            # Only the first line: parse errors from the WDL grammar list every
-            # token that would have been accepted, which is pages of noise.
-            summary = str(e).splitlines()[0] if str(e) else type(e).__name__
-            print("{}: skipped, does not parse: {}".format(path, summary), file=sys.stderr)
-    return documents
-
-
-def declared_inputs(workflow):
-    """
-    Return the names of a workflow's own inputs.
-
-    Only the input section counts. Inputs that a called subworkflow leaves
-    unbound are also settable from outside, but they belong to the subworkflow's
-    documentation, not to this one's.
-    """
-
-    return [declaration.name for declaration in (workflow.inputs or [])]
-
-
-def read_readme_sections(path):
-    """
-    Return a list of (heading, body_lines) for the README, one per heading, in
-    document order. Text before the first heading is dropped.
-    """
-
-    sections = []
-    with open(path) as f:
-        for line in f:
+        # This holds README sections as lists of lines.
+        self.sections = []
+        for line in open(path):
             heading = README_HEADING_RE.match(line)
             if heading:
-                sections.append((heading.group(2), []))
-            elif sections:
-                sections[-1][1].append(line)
-    return sections
+                # Start a new section
+                self.sections.append([line])
+            elif self.sections:
+                # At least one section exists, so one is in progress.
+                self.sections[-1].append(line)
+
+    def get_section(self, workflow_filename: str) -> list[str] | None:
+        """
+        Find the README section that documents a workflow.
+
+        Looks for the workflow's path anywhere in the section.
+        """
+
+        for lines in self.sections:
+            # TODO: It's not super fast to scan each section all the time. We
+            # should maybe make a rule about the headings.
+            for line in lines:
+                if workflow_filename in line:
+                    return lines
+        return None
+
+    def get_inputs(self, workflow_filename: str) -> set[str] | None:
+        """
+        Get the inputs for a workflow, as listed in the README.
+        """
+
+        section = self.get_section(workflow_filename)
+
+        if section is None:
+            # Not found
+            return None
+
+        parameters = set()
+
+        for line in section:
+            match = README_PARAMETER_RE.match(line)
+            if match:
+                parameters.add(match.group(1))
+
+        return parameters
 
 
-def readme_section_for(sections, workflow_path):
+def read_set(path: Path) -> set[str]:
     """
-    Find the README section that documents a workflow, by looking for the
-    workflow's path anywhere in the section. That covers a relative link, an
-    absolute github.com link, and a `miniwdl run` example alike. Returns
-    (heading, body_lines), or None if no section mentions the workflow.
+    Read a set of strings from a file.
+
+    Ignores # comments.
+    """
+    
+    return {l.split("#", 1)[0].strip() for l in open(path).readlines()} - {""}
+
+
+def scan_workflows(report: Report) -> Iterator[WDL.Tree.Workflow]:
+    """
+    Get an iterator over WDL workflows we want to process.
+
+    Remember that WDL workflows have a .pos.uri for where they came from.
     """
 
-    for heading, body in sections:
-        for line in body:
-            if workflow_path in line:
-                return (heading, body)
-    return None
+    skip_set = read_set(EXEMPTIONS)
+
+    for path in WORKFLOW_DIR.rglob("*.wdl"):
+        if str(path) in skip_set:
+            # Ignore listed ignored files
+            continue
+        if INTERNAL_DIR in path.parents:
+            # Ignore all the internal workflows
+            continue
+        try:
+            document = WDL.load(str(path))
+        except Exception as e:
+            report.problem(path, f"does not parse: {e}")
+            continue
+
+        if document.workflow:
+            yield document.workflow
 
 
-def check_parameter_meta(problems, path, workflow):
+def check_workflow(report: Report, readme: Readme, workflow: WDL.Tree.Workflow) -> None:
     """
-    Every input needs a parameter_meta entry, and every parameter_meta entry
-    needs an input, so that the documentation can't quietly describe a parameter
-    that no longer exists.
+    Find lint errors in a workflow.
     """
+    
+    # Get all the workflow input names
+    workflow_inputs = {d.name for d in (workflow.inputs or [])}
 
-    inputs = set(declared_inputs(workflow))
-    documented = set(workflow.parameter_meta.keys())
+    # Make sure the input names are 1 to 1 with the parameter_meta entries
+    meta_inputs = set(workflow.parameter_meta.keys())
+    for name in sorted(workflow_inputs - meta_inputs):
+        report.problem(workflow.pos.uri, f"input {name} has no parameter_meta entry")
+    for name in sorted(meta_inputs - workflow_inputs):
+        report.problem(workflow.pos.uri, f"parameter_meta documents {name}, which is not an input")
 
-    for name in sorted(inputs - documented):
-        problems.report(path, "input {} has no parameter_meta entry".format(name))
-    for name in sorted(documented - inputs):
-        problems.report(path, "parameter_meta documents {}, which is not an input".format(name))
-
-
-def check_readme(problems, path, workflow, sections):
-    """
-    Check a workflow's README section against its inputs.
-
-    A workflow that users are meant to run has to have a section, and that
-    section has to list every parameter. Internal subworkflows are skipped: the
-    README mentions them, but making callers read a parameter list for plumbing
-    they never invoke would be noise.
-    """
-
-    if path.startswith(INTERNAL_DIR + os.sep):
-        return
-
-    section = readme_section_for(sections, path)
-    if section is None:
-        problems.report(path, "has no section in {} that mentions it".format(README))
-        return
-    heading, body = section
-
-    inputs = set(declared_inputs(workflow))
-    documented = set()
-    for line in body:
-        match = README_PARAMETER_RE.match(line)
-        if match:
-            documented.add(match.group(1))
-
-    where = "{} ({} section of {})".format(path, heading, README)
-    for name in sorted(inputs - documented):
-        problems.report(where, "input {} is not listed in the README".format(name))
-    for name in sorted(documented - inputs):
-        problems.report(where, "README lists {}, which is not an input".format(name))
+    # Make sure the input names are 1 to 1 with the README documentation entries
+    readme_inputs = readme.get_inputs(workflow.pos.uri)
+    if readme_inputs is None:
+        report.problem(workflow.pos.uri, f"has no section in README")
+    else:
+        for name in sorted(workflow_inputs - readme_inputs):
+            report.problem(workflow.pos.uri, f"input {name} is not listed in the README")
+        for name in sorted(readme_inputs - workflow_inputs):
+            report.problem(workflow.pos.uri, f"README lists {name}, which is not an input")
 
 
-def main(args):
+def main(args: list[str]) -> int:
     root = args[0] if args else "."
     os.chdir(root)
 
-    problems = Problems()
-    exempt = read_exemptions(EXEMPTIONS)
+    report = Report()
 
-    workflow_documents = load_documents(WORKFLOW_DIR)
-    sections = read_readme_sections(README)
+    readme = Readme(README)
 
-    for path, document in workflow_documents:
-        if document.workflow is None or path in exempt:
-            continue
-        check_parameter_meta(problems, path, document.workflow)
-        check_readme(problems, path, document.workflow, sections)
+    for workflow in scan_workflows(report):
+        check_workflow(report, readme, workflow)
 
-    if problems.count:
-        print("\n{} documentation problem(s) found".format(problems.count), file=sys.stderr)
+    if report.problems:
+        print("\n{} problem(s) found".format(report.problems), file=sys.stderr)
         return 1
-    print("Workflows and their documentation agree")
+    print("Workflow documentation OK")
     return 0
 
 

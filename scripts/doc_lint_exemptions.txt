@@ -1,12 +1,4 @@
 # Files that scripts/lint_wdl_docs.py does not check.
-#
-# Everything here predates the check and documents its parameters partly or not
-# at all. They are exempt so that the check can be enforced on the workflows
-# that are actually maintained; nothing new should be added to this list, and
-# entries should be removed as the files they name are documented or dropped.
-
-# The pedigree, trio and pre-Giraffe mapping and calling workflows, which the
-# README itself marks as legacy.
 workflows/giraffe_and_deeptrio.mapper.wdl
 workflows/giraffe_and_deeptrio.wdl
 workflows/vg_2nd_iter_pedigree_indel_realign.wdl
