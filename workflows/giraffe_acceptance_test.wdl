@@ -3,10 +3,12 @@ version 1.0
 import "../tasks/aardvark_evaluation.wdl" as aardvark_tasks
 import "../tasks/bioinfo_utils.wdl" as utils
 import "./aardvark_evaluation.wdl" as aardvark_wf
-import "./giraffe_and_deepvariant.wdl" as gd_wf
+import "./deepvariant.wdl" as dv_wf
 import "./internal/giraffe_indexes.wdl" as index_wf
+import "./internal/map_reads.wdl" as map_wf
 import "./internal/prepare_reads.wdl" as reads_wf
 import "./internal/prepare_reference.wdl" as reference_wf
+import "./internal/surject.wdl" as surject_wf
 
 workflow GiraffeAcceptanceTest {
 
@@ -17,10 +19,12 @@ workflow GiraffeAcceptanceTest {
     parameter_meta {
         BASELINE_VG_DOCKER: "Container image to use when running vg for the baseline run, which is the known-good version to compare against"
         CANDIDATE_VG_DOCKER: "Container image to use when running vg for the candidate run, which is the version under test"
-        BASELINE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Alternate container image to use when running vg giraffe mapping in the baseline run"
-        BASELINE_VG_SURJECT_DOCKER: "(OPTIONAL) Alternate container image to use when running vg surject in the baseline run"
-        CANDIDATE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Alternate container image to use when running vg giraffe mapping in the candidate run"
-        CANDIDATE_VG_SURJECT_DOCKER: "(OPTIONAL) Alternate container image to use when running vg surject in the candidate run"
+        VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in both runs, whatever the baseline and candidate containers are. Set this to hold mapping fixed and test a later stage: the reads are then mapped once and the same alignments are surjected both ways."
+        VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in both runs, whatever the baseline and candidate containers are. Set this to hold surjection fixed and test mapping."
+        BASELINE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run. Overrides VG_GIRAFFE_DOCKER and BASELINE_VG_DOCKER."
+        BASELINE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the baseline run. Overrides VG_SURJECT_DOCKER and BASELINE_VG_DOCKER."
+        CANDIDATE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run. Overrides VG_GIRAFFE_DOCKER and CANDIDATE_VG_DOCKER."
+        CANDIDATE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the candidate run. Overrides VG_SURJECT_DOCKER and CANDIDATE_VG_DOCKER."
         INPUT_READ_FILE_1: "Input sample 1st read pair fastq.gz"
         INPUT_READ_FILE_2: "Input sample 2nd read pair fastq.gz"
         INPUT_CRAM_FILE: "Input CRAM file. Converted to FASTQ once and shared by both runs."
@@ -46,7 +50,7 @@ workflow GiraffeAcceptanceTest {
         RESTRICT_REGIONS_BED: "(OPTIONAL) BED to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set."
         TARGET_REGION: "(OPTIONAL) Contig or region to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set."
         RUN_STANDALONE_VCFEVAL: "Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs). Only used if RUN_HAPPY_EVALUATION is set."
-        OUTPUT_GAF: "Should a GAF file with the aligned reads be saved for each run? Default is 'false'."
+        OUTPUT_GAF: "Should a GAF file with the aligned reads be saved for each run? When both runs map the same way there is only one set of alignments, so both outputs are the same file. Default is 'false'."
         OUTPUT_BAM: "Should the merged BAM be saved for each run? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
@@ -102,6 +106,8 @@ workflow GiraffeAcceptanceTest {
     input {
         String BASELINE_VG_DOCKER = "quay.io/vgteam/vg:v1.64.0"
         String CANDIDATE_VG_DOCKER = "quay.io/vgteam/vg:v1.64.0"
+        String? VG_GIRAFFE_DOCKER
+        String? VG_SURJECT_DOCKER
         String? BASELINE_VG_GIRAFFE_DOCKER
         String? BASELINE_VG_SURJECT_DOCKER
         String? CANDIDATE_VG_GIRAFFE_DOCKER
@@ -298,7 +304,24 @@ workflow GiraffeAcceptanceTest {
     # The two runs, differing only in which vg they use           #
     ###############################################################
 
-    call gd_wf.GiraffeDeepVariant as baselineRun {
+    # Which container each vg stage uses. A stage that gets the same container on
+    # both sides is not under test, and mapping in particular is then done once
+    # and its alignments handed to both surjections, so that testing surjection
+    # doesn't pay for mapping twice.
+    String baseline_giraffe_docker = select_first([BASELINE_VG_GIRAFFE_DOCKER, VG_GIRAFFE_DOCKER, BASELINE_VG_DOCKER])
+    String candidate_giraffe_docker = select_first([CANDIDATE_VG_GIRAFFE_DOCKER, VG_GIRAFFE_DOCKER, CANDIDATE_VG_DOCKER])
+    String baseline_surject_docker = select_first([BASELINE_VG_SURJECT_DOCKER, VG_SURJECT_DOCKER, BASELINE_VG_DOCKER])
+    String candidate_surject_docker = select_first([CANDIDATE_VG_SURJECT_DOCKER, VG_SURJECT_DOCKER, CANDIDATE_VG_DOCKER])
+
+    # Separate candidate indexes mean a different graph to map against, so the
+    # alignments can't be shared no matter what container maps them.
+    Boolean share_mapping = !CANDIDATE_SEPARATE_INDEXES && baseline_giraffe_docker == candidate_giraffe_docker
+
+    ###############################################################
+    # Map: once if both sides map the same way, otherwise twice    #
+    ###############################################################
+
+    call map_wf.MapReads as baselineMapping {
         input:
         INPUT_READ_FILE_1=PrepareReads.read_1_file,
         INPUT_READ_FILE_2=PrepareReads.read_2_file,
@@ -307,78 +330,96 @@ workflow GiraffeAcceptanceTest {
         MIN_FILE=baselineIndexes.min_file,
         ZIPCODES_FILE=baselineIndexes.zipcodes_file,
         SAMPLE_NAME=SAMPLE_NAME,
-        OUTPUT_GAF=OUTPUT_GAF,
-        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
-        OUTPUT_CALLING_BAMS=false,
+        OUTPUT_MERGED_GAF=OUTPUT_GAF,
         PAIRED_READS=PAIRED_READS,
         INTERLEAVED_READS=INTERLEAVED_READS,
         READS_PER_CHUNK=READS_PER_CHUNK,
-        PATH_LIST_FILE=PrepareReference.path_list_file,
-        REFERENCE_PREFIX=REFERENCE_PREFIX,
-        REFERENCE_FILE=PrepareReference.reference_file,
-        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
-        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
-        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
-        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
-        PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
-        LEFTALIGN_BAM=LEFTALIGN_BAM,
-        REALIGN_INDELS=REALIGN_INDELS,
-        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
-        MIN_MAPQ=MIN_MAPQ,
-        MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
         GIRAFFE_PRESET=GIRAFFE_PRESET,
         GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
-        TRUTH_VCF=happy_truth_vcf,
-        TRUTH_VCF_INDEX=happy_truth_vcf_index,
-        EVALUATION_REGIONS_BED=happy_regions_bed,
-        RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
-        TARGET_REGION=TARGET_REGION,
-        RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
-        DV_MODEL_TYPE=DV_MODEL_TYPE,
-        DV_MODEL_META=DV_MODEL_META,
-        DV_MODEL_INDEX=DV_MODEL_INDEX,
-        DV_MODEL_DATA=DV_MODEL_DATA,
-        DV_MODEL_FILES=DV_MODEL_FILES,
-        DV_MODEL_VARIABLES_FILES=DV_MODEL_VARIABLES_FILES,
-        DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
-        DV_NORM_READS=DV_NORM_READS,
-        OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
-        DV_USE_GPUS=DV_USE_GPUS,
-        DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
-        DV_GPU_DOCKER=DV_GPU_DOCKER,
         SPLIT_READ_CORES=SPLIT_READ_CORES,
-        SPLIT_READ_MEM=SPLIT_READ_MEM,
         MAP_CORES=MAP_CORES,
         MAP_MEM=MAP_MEM,
-        # The indexes are already made, so the mapping runs never sample again.
-        HAPLOTYPE_SAMPLING=false,
-        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
-        REALIGN_MEM=REALIGN_MEM,
-        CALL_CORES=CALL_CORES,
-        CALL_MEM=CALL_MEM,
-        MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
-        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
-        EVAL_MEM=EVAL_MEM,
-        VG_DOCKER=BASELINE_VG_DOCKER,
-        VG_GIRAFFE_DOCKER=BASELINE_VG_GIRAFFE_DOCKER,
-        VG_SURJECT_DOCKER=BASELINE_VG_SURJECT_DOCKER
+        VG_DOCKER=baseline_giraffe_docker
     }
 
-    call gd_wf.GiraffeDeepVariant as candidateRun {
+    if (!share_mapping) {
+        call map_wf.MapReads as candidateMapping {
+            input:
+            INPUT_READ_FILE_1=PrepareReads.read_1_file,
+            INPUT_READ_FILE_2=PrepareReads.read_2_file,
+            GBZ_FILE=candidate_gbz_file,
+            DIST_FILE=candidate_dist_file,
+            MIN_FILE=candidate_min_file,
+            ZIPCODES_FILE=candidate_zipcodes_file,
+            SAMPLE_NAME=SAMPLE_NAME,
+            OUTPUT_MERGED_GAF=OUTPUT_GAF,
+            PAIRED_READS=PAIRED_READS,
+            INTERLEAVED_READS=INTERLEAVED_READS,
+            READS_PER_CHUNK=READS_PER_CHUNK,
+            GIRAFFE_PRESET=GIRAFFE_PRESET,
+            GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
+            SPLIT_READ_CORES=SPLIT_READ_CORES,
+            MAP_CORES=MAP_CORES,
+            MAP_MEM=MAP_MEM,
+            VG_DOCKER=candidate_giraffe_docker
+        }
+    }
+
+    Array[File] candidate_gaf_chunks = select_first([candidateMapping.gaf_chunks, baselineMapping.gaf_chunks])
+
+    ###############################################################
+    # Surject: twice, since this is a stage that can be tested     #
+    ###############################################################
+
+    # Surjection has to use the graph the reads were mapped to, because the
+    # alignments name its nodes.
+    call surject_wf.Surject as baselineSurjection {
         input:
-        INPUT_READ_FILE_1=PrepareReads.read_1_file,
-        INPUT_READ_FILE_2=PrepareReads.read_2_file,
-        GBZ_FILE=candidate_gbz_file,
-        DIST_FILE=candidate_dist_file,
-        MIN_FILE=candidate_min_file,
-        ZIPCODES_FILE=candidate_zipcodes_file,
+        GAF_CHUNKS=baselineMapping.gaf_chunks,
+        GBZ_FILE=baselineIndexes.gbz_file,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
         SAMPLE_NAME=SAMPLE_NAME,
-        OUTPUT_GAF=OUTPUT_GAF,
+        PAIRED_READS=PAIRED_READS,
+        PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+        MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+        SURJECT_CORES=MAP_CORES,
+        SURJECT_MEM=MAP_MEM,
+        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+        VG_DOCKER=baseline_surject_docker
+    }
+
+    call surject_wf.Surject as candidateSurjection {
+        input:
+        GAF_CHUNKS=candidate_gaf_chunks,
+        # When mapping is shared this is the baseline's graph, which is the one
+        # those alignments were made against.
+        GBZ_FILE=candidate_gbz_file,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        SAMPLE_NAME=SAMPLE_NAME,
+        PAIRED_READS=PAIRED_READS,
+        PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+        MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+        SURJECT_CORES=MAP_CORES,
+        SURJECT_MEM=MAP_MEM,
+        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+        VG_DOCKER=candidate_surject_docker
+    }
+
+    ###############################################################
+    # Call: twice, once per surjected BAM                          #
+    ###############################################################
+
+    call dv_wf.DeepVariant as baselineCalling {
+        input:
+        MERGED_BAM_FILE=baselineSurjection.bam_file,
+        MERGED_BAM_FILE_INDEX=baselineSurjection.bam_index_file,
+        SAMPLE_NAME=SAMPLE_NAME,
         OUTPUT_SINGLE_BAM=OUTPUT_BAM,
         OUTPUT_CALLING_BAMS=false,
-        PAIRED_READS=PAIRED_READS,
-        INTERLEAVED_READS=INTERLEAVED_READS,
-        READS_PER_CHUNK=READS_PER_CHUNK,
         PATH_LIST_FILE=PrepareReference.path_list_file,
         REFERENCE_PREFIX=REFERENCE_PREFIX,
         REFERENCE_FILE=PrepareReference.reference_file,
@@ -386,14 +427,10 @@ workflow GiraffeAcceptanceTest {
         REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
         HAPLOID_CONTIGS=HAPLOID_CONTIGS,
         PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
-        PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
         LEFTALIGN_BAM=LEFTALIGN_BAM,
         REALIGN_INDELS=REALIGN_INDELS,
         REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
         MIN_MAPQ=MIN_MAPQ,
-        MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
-        GIRAFFE_PRESET=GIRAFFE_PRESET,
-        GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
         TRUTH_VCF=happy_truth_vcf,
         TRUTH_VCF_INDEX=happy_truth_vcf_index,
         EVALUATION_REGIONS_BED=happy_regions_bed,
@@ -412,21 +449,58 @@ workflow GiraffeAcceptanceTest {
         DV_USE_GPUS=DV_USE_GPUS,
         DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
         DV_GPU_DOCKER=DV_GPU_DOCKER,
-        SPLIT_READ_CORES=SPLIT_READ_CORES,
-        SPLIT_READ_MEM=SPLIT_READ_MEM,
-        MAP_CORES=MAP_CORES,
-        MAP_MEM=MAP_MEM,
-        HAPLOTYPE_SAMPLING=false,
         BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
         REALIGN_MEM=REALIGN_MEM,
         CALL_CORES=CALL_CORES,
         CALL_MEM=CALL_MEM,
         MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
         MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
-        EVAL_MEM=EVAL_MEM,
-        VG_DOCKER=CANDIDATE_VG_DOCKER,
-        VG_GIRAFFE_DOCKER=CANDIDATE_VG_GIRAFFE_DOCKER,
-        VG_SURJECT_DOCKER=CANDIDATE_VG_SURJECT_DOCKER
+        EVAL_MEM=EVAL_MEM
+    }
+
+    call dv_wf.DeepVariant as candidateCalling {
+        input:
+        MERGED_BAM_FILE=candidateSurjection.bam_file,
+        MERGED_BAM_FILE_INDEX=candidateSurjection.bam_index_file,
+        SAMPLE_NAME=SAMPLE_NAME,
+        OUTPUT_SINGLE_BAM=OUTPUT_BAM,
+        OUTPUT_CALLING_BAMS=false,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
+        HAPLOID_CONTIGS=HAPLOID_CONTIGS,
+        PAR_REGIONS_BED_FILE=PAR_REGIONS_BED_FILE,
+        LEFTALIGN_BAM=LEFTALIGN_BAM,
+        REALIGN_INDELS=REALIGN_INDELS,
+        REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
+        MIN_MAPQ=MIN_MAPQ,
+        TRUTH_VCF=happy_truth_vcf,
+        TRUTH_VCF_INDEX=happy_truth_vcf_index,
+        EVALUATION_REGIONS_BED=happy_regions_bed,
+        RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
+        TARGET_REGION=TARGET_REGION,
+        RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
+        DV_MODEL_TYPE=DV_MODEL_TYPE,
+        DV_MODEL_META=DV_MODEL_META,
+        DV_MODEL_INDEX=DV_MODEL_INDEX,
+        DV_MODEL_DATA=DV_MODEL_DATA,
+        DV_MODEL_FILES=DV_MODEL_FILES,
+        DV_MODEL_VARIABLES_FILES=DV_MODEL_VARIABLES_FILES,
+        DV_KEEP_LEGACY_AC=DV_KEEP_LEGACY_AC,
+        DV_NORM_READS=DV_NORM_READS,
+        OTHER_MAKEEXAMPLES_ARG=OTHER_MAKEEXAMPLES_ARG,
+        DV_USE_GPUS=DV_USE_GPUS,
+        DV_NO_GPU_DOCKER=DV_NO_GPU_DOCKER,
+        DV_GPU_DOCKER=DV_GPU_DOCKER,
+        BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+        REALIGN_MEM=REALIGN_MEM,
+        CALL_CORES=CALL_CORES,
+        CALL_MEM=CALL_MEM,
+        MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
+        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
+        EVAL_MEM=EVAL_MEM
     }
 
     ###############################################################
@@ -435,8 +509,8 @@ workflow GiraffeAcceptanceTest {
 
     call aardvark_wf.AardvarkEvaluation as baselineEvaluation {
         input:
-        QUERY_VCF=baselineRun.output_vcf,
-        QUERY_VCF_INDEX=baselineRun.output_vcf_index,
+        QUERY_VCF=baselineCalling.output_vcf,
+        QUERY_VCF_INDEX=baselineCalling.output_vcf_index,
         TRUTH_VCF=TRUTH_VCF,
         TRUTH_VCF_INDEX=truth_vcf_index,
         REFERENCE_FILE=PrepareReference.reference_file,
@@ -450,8 +524,8 @@ workflow GiraffeAcceptanceTest {
 
     call aardvark_wf.AardvarkEvaluation as candidateEvaluation {
         input:
-        QUERY_VCF=candidateRun.output_vcf,
-        QUERY_VCF_INDEX=candidateRun.output_vcf_index,
+        QUERY_VCF=candidateCalling.output_vcf,
+        QUERY_VCF_INDEX=candidateCalling.output_vcf_index,
         TRUTH_VCF=TRUTH_VCF,
         TRUTH_VCF_INDEX=truth_vcf_index,
         REFERENCE_FILE=PrepareReference.reference_file,
@@ -478,19 +552,19 @@ workflow GiraffeAcceptanceTest {
         File candidate_aardvark_summary = candidateEvaluation.aardvark_summary
         Array[File] baseline_aardvark_all_files = baselineEvaluation.aardvark_all_files
         Array[File] candidate_aardvark_all_files = candidateEvaluation.aardvark_all_files
-        File? baseline_happy_evaluation_archive = baselineRun.output_happy_evaluation_archive
-        File? candidate_happy_evaluation_archive = candidateRun.output_happy_evaluation_archive
-        File? baseline_vcfeval_evaluation_archive = baselineRun.output_vcfeval_evaluation_archive
-        File? candidate_vcfeval_evaluation_archive = candidateRun.output_vcfeval_evaluation_archive
-        File baseline_vcf = baselineRun.output_vcf
-        File baseline_vcf_index = baselineRun.output_vcf_index
-        File candidate_vcf = candidateRun.output_vcf
-        File candidate_vcf_index = candidateRun.output_vcf_index
-        File? baseline_gaf = baselineRun.output_gaf
-        File? candidate_gaf = candidateRun.output_gaf
-        File? baseline_bam = baselineRun.output_bam
-        File? baseline_bam_index = baselineRun.output_bam_index
-        File? candidate_bam = candidateRun.output_bam
-        File? candidate_bam_index = candidateRun.output_bam_index
+        File? baseline_happy_evaluation_archive = baselineCalling.output_happy_evaluation_archive
+        File? candidate_happy_evaluation_archive = candidateCalling.output_happy_evaluation_archive
+        File? baseline_vcfeval_evaluation_archive = baselineCalling.output_vcfeval_evaluation_archive
+        File? candidate_vcfeval_evaluation_archive = candidateCalling.output_vcfeval_evaluation_archive
+        File baseline_vcf = baselineCalling.output_vcf
+        File baseline_vcf_index = baselineCalling.output_vcf_index
+        File candidate_vcf = candidateCalling.output_vcf
+        File candidate_vcf_index = candidateCalling.output_vcf_index
+        File? baseline_gaf = baselineMapping.merged_gaf
+        File? candidate_gaf = if share_mapping then baselineMapping.merged_gaf else candidateMapping.merged_gaf
+        File? baseline_bam = baselineCalling.output_bam
+        File? baseline_bam_index = baselineCalling.output_bam_index
+        File? candidate_bam = candidateCalling.output_bam
+        File? candidate_bam_index = candidateCalling.output_bam_index
     }
 }

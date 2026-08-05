@@ -2,11 +2,11 @@ version 1.0
 
 import "../tasks/validation.wdl" as validation
 import "../tasks/bioinfo_utils.wdl" as utils
-import "../tasks/gam_gaf_utils.wdl" as gautils
-import "../tasks/vg_map_hts.wdl" as map
 import "./haplotype_sampling.wdl" as hapl
+import "./internal/map_reads.wdl" as map_wf
 import "./internal/prepare_reads.wdl" as reads_wf
 import "./internal/prepare_reference.wdl" as reference_wf
+import "./internal/surject.wdl" as surject_wf
 
 workflow Giraffe {
     meta {
@@ -214,15 +214,6 @@ workflow Giraffe {
     File file_dist = select_first([HaplotypeSampling.sampled_dist, DIST_FILE])
 
 
-    # Split input reads into chunks for parallelized mapping
-    call utils.splitReads as firstReadPair {
-        input:
-            in_read_file=read_1_file,
-            in_pair_id="1",
-            in_reads_per_chunk=READS_PER_CHUNK,
-            in_split_read_cores=SPLIT_READ_CORES
-    }
-    
     # Which path names to work on, and what reference to surject against? These
     # come from the graph we are actually mapping to, which is the sampled one
     # if we sampled.
@@ -246,111 +237,44 @@ workflow Giraffe {
     ################################################################
     # Distribute vg mapping operation over each chunked read pair #
     ################################################################
-    if(PAIRED_READS && !INTERLEAVED_READS){
-        call utils.splitReads as secondReadPair {
-            input:
-            in_read_file=select_first([read_2_file]),
-            in_pair_id="2",
-            in_reads_per_chunk=READS_PER_CHUNK,
-            in_split_read_cores=SPLIT_READ_CORES
-        }
-        Array[Pair[File,File]] read_pair_chunk_files_list = zip(firstReadPair.output_read_chunks, secondReadPair.output_read_chunks)
-        scatter (read_pair_chunk_files in read_pair_chunk_files_list) {
-            call map.runVGGIRAFFE as runVGGIRAFFE2file {
-                input:
-                fastq_file_1=read_pair_chunk_files.left,
-                fastq_file_2=read_pair_chunk_files.right,
-                in_preset=GIRAFFE_PRESET,
-                in_giraffe_options=GIRAFFE_OPTIONS,
-                in_gbz_file=file_gbz,
-                in_dist_file=file_dist,
-                in_zipcodes_file=file_zipcodes,
-                in_min_file=file_min,
-                # We always need to pass a full dict file here, with lengths,
-                # because if we pass just path lists and the paths are not
-                # completely contained in the graph (like if we're working on
-                # GRCh38 paths in a CHM13-based graph), giraffe won't be able
-                # to get the path lengths and will crash.
-                # TODO: Somehow this problem is supposed to go away if we pull
-                # any GRCh38. prefix off the path names by setting
-                # REFERENCE_PREFIX and making sure the prefix isn't in the
-                # truth set.
-                # See <https://github.com/adamnovak/giraffe-dv-wdl/pull/2#issuecomment-955096920>
-                in_sample_name=SAMPLE_NAME,
-                nb_cores=MAP_CORES,
-                mem_gb=MAP_MEM,
-                vg_docker=select_first([VG_GIRAFFE_DOCKER, VG_DOCKER])
-            }
-        }
-    }
-    # TODO: invent else
-    if (!(PAIRED_READS && !INTERLEAVED_READS)) {
-        scatter (read_pair_chunk_file in firstReadPair.output_read_chunks) {
-            call map.runVGGIRAFFE as runVGGIRAFFE1file {
-                input:
-                fastq_file_1=read_pair_chunk_file,
-                in_interleaved=INTERLEAVED_READS,
-                in_preset=GIRAFFE_PRESET,
-                in_giraffe_options=GIRAFFE_OPTIONS,
-                in_gbz_file=file_gbz,
-                in_dist_file=file_dist,
-                in_zipcodes_file=file_zipcodes,
-                in_min_file=file_min,
-                # We always need to pass a full dict file here, with lengths,
-                # because if we pass just path lists and the paths are not
-                # completely contained in the graph (like if we're working on
-                # GRCh38 paths in a CHM13-based graph), giraffe won't be able
-                # to get the path lengths and will crash.
-                # TODO: Somehow this problem is supposed to go away if we pull
-                # any GRCh38. prefix off the path names by setting
-                # REFERENCE_PREFIX and making sure the prefix isn't in the
-                # truth set.
-                # See <https://github.com/adamnovak/giraffe-dv-wdl/pull/2#issuecomment-955096920>
-                in_sample_name=SAMPLE_NAME,
-                nb_cores=MAP_CORES,
-                mem_gb=MAP_MEM,
-                vg_docker=select_first([VG_GIRAFFE_DOCKER, VG_DOCKER])
-            }
-        }
+    call map_wf.MapReads {
+        input:
+        INPUT_READ_FILE_1=read_1_file,
+        INPUT_READ_FILE_2=read_2_file,
+        GBZ_FILE=file_gbz,
+        DIST_FILE=file_dist,
+        MIN_FILE=file_min,
+        ZIPCODES_FILE=file_zipcodes,
+        SAMPLE_NAME=SAMPLE_NAME,
+        OUTPUT_MERGED_GAF=OUTPUT_GAF,
+        PAIRED_READS=PAIRED_READS,
+        INTERLEAVED_READS=INTERLEAVED_READS,
+        READS_PER_CHUNK=READS_PER_CHUNK,
+        GIRAFFE_PRESET=GIRAFFE_PRESET,
+        GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
+        SPLIT_READ_CORES=SPLIT_READ_CORES,
+        MAP_CORES=MAP_CORES,
+        MAP_MEM=MAP_MEM,
+        VG_DOCKER=select_first([VG_GIRAFFE_DOCKER, VG_DOCKER])
     }
 
-    Array[File] gaf_chunks = select_first([runVGGIRAFFE2file.chunk_gaf_file, runVGGIRAFFE1file.chunk_gaf_file])
-    
     if (OUTPUT_SINGLE_BAM || OUTPUT_CALLING_BAMS) {
         # We are outputting BAM so surjection is needed
-
-        scatter (gaf_file in gaf_chunks) {
-            call gautils.surjectGAFtoBAM {
-                input:
-                in_gaf_file=gaf_file,
-                in_gbz_file=file_gbz,
-                in_path_list_file=pipeline_path_list_file,
-                in_sample_name=SAMPLE_NAME,
-                in_max_fragment_length=MAX_FRAGMENT_LENGTH,
-                in_paired_reads=PAIRED_READS,
-                in_prune_low_complexity=PRUNE_LOW_COMPLEXITY,
-                nb_cores=MAP_CORES,
-                mem_gb=MAP_MEM,
-                vg_docker=select_first([VG_SURJECT_DOCKER, VG_DOCKER])
-            }
-
-            call utils.sortBAM {
-                input:
-                in_bam_file=surjectGAFtoBAM.output_bam_file,
-                in_ref_dict=reference_dict_file,
-                in_prefix_to_strip=REFERENCE_PREFIX,
-                nb_cores=MAP_CORES,
-                mem_gb=BAM_PREPROCESS_MEM
-            }
-        }
-        
-        # Merge up the unprocessed surjected alignments
-        call utils.mergeAlignmentBAMChunks {
+        call surject_wf.Surject {
             input:
-            in_sample_name=SAMPLE_NAME,
-            in_alignment_bam_chunk_files=sortBAM.sorted_bam,
-            in_cores=MAP_CORES,
-            mem_gb=BAM_PREPROCESS_MEM
+            GAF_CHUNKS=MapReads.gaf_chunks,
+            GBZ_FILE=file_gbz,
+            PATH_LIST_FILE=pipeline_path_list_file,
+            REFERENCE_DICT_FILE=reference_dict_file,
+            REFERENCE_PREFIX=REFERENCE_PREFIX,
+            SAMPLE_NAME=SAMPLE_NAME,
+            PAIRED_READS=PAIRED_READS,
+            PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+            MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+            SURJECT_CORES=MAP_CORES,
+            SURJECT_MEM=MAP_MEM,
+            BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+            VG_DOCKER=select_first([VG_SURJECT_DOCKER, VG_DOCKER])
         }
 
         if (OUTPUT_CALLING_BAMS || LEFTALIGN_BAM || REALIGN_INDELS) {
@@ -361,8 +285,8 @@ workflow Giraffe {
             call utils.splitBAMbyPath {
                 input:
                 in_sample_name=SAMPLE_NAME,
-                in_merged_bam_file=mergeAlignmentBAMChunks.merged_bam_file,
-                in_merged_bam_file_index=mergeAlignmentBAMChunks.merged_bam_file_index,
+                in_merged_bam_file=Surject.bam_file,
+                in_merged_bam_file_index=Surject.bam_index_file,
                 in_path_list_file=pipeline_path_list_file,
                 in_prefix_to_strip=REFERENCE_PREFIX,
                 thread_count=SPLIT_READ_CORES,
@@ -434,23 +358,15 @@ workflow Giraffe {
         if (OUTPUT_SINGLE_BAM) {
             # Find the single BAM and index that we want to output.
             # We want the one after postprocessing if we did any, and the plain merged sorted BAM otherwise.
-            File single_bam = select_first([mergeBAM.merged_bam_file, mergeAlignmentBAMChunks.merged_bam_file])
-            File single_bam_index = select_first([mergeBAM.merged_bam_file_index, mergeAlignmentBAMChunks.merged_bam_file_index])
+            File single_bam = select_first([mergeBAM.merged_bam_file, Surject.bam_file])
+            File single_bam_index = select_first([mergeBAM.merged_bam_file_index, Surject.bam_index_file])
         }
     }
-    
-    if (OUTPUT_GAF){
-        call gautils.mergeGAF {
-            input:
-            in_sample_name=SAMPLE_NAME,
-            in_gaf_chunk_files=gaf_chunks
-        }
-    }
-    
+
     output {
         File? output_bam = single_bam
         File? output_bam_index = single_bam_index
-        File? output_gaf = mergeGAF.output_merged_gaf
+        File? output_gaf = MapReads.merged_gaf
         Array[File]? output_calling_bams = calling_bams
         Array[File]? output_calling_bam_indexes = calling_bam_indexes
 
