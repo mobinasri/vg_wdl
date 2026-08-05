@@ -180,6 +180,7 @@ task surjectGAFtoSortedBAM {
         Int in_max_fragment_length = 3000
         Boolean make_bam_index = false
         Boolean input_is_gam = false
+        String in_surject_options = ""
         Int nb_cores = 16
         Int mem_gb = 120
         Int disk_size = 5 * round(size(in_gbz_file, 'G') + size(in_gaf_file, 'G')) + 50
@@ -199,7 +200,7 @@ task surjectGAFtoSortedBAM {
         set -o xtrace
         #to turn off echo do 'set +o xtrace'
 
-        EXTRA_ARGS=()
+        EXTRA_ARGS=(~{in_surject_options})
         if [ ~{in_paired_reads} == true ]
         then
             EXTRA_ARGS+=(--interleaved --max-frag-len "~{in_max_fragment_length}")
@@ -248,6 +249,7 @@ task surjectGAFtoBAM {
         Boolean in_prune_low_complexity = true
         Int in_max_fragment_length = 3000
         Boolean input_is_gam = false
+        String in_surject_options = ""
         Int nb_cores = 16
         Int mem_gb = 120
         Int disk_size = 5 * round(size(in_gbz_file, 'G') + size(in_gaf_file, 'G')) + 50
@@ -266,7 +268,7 @@ task surjectGAFtoBAM {
         set -o xtrace
         #to turn off echo do 'set +o xtrace'
 
-        EXTRA_ARGS=()
+        EXTRA_ARGS=(~{in_surject_options})
         if [ ~{in_paired_reads} == true ]
         then
             EXTRA_ARGS+=(--interleaved --max-frag-len "~{in_max_fragment_length}")

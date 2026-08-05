@@ -18,6 +18,7 @@ workflow Surject {
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'."
         MAX_FRAGMENT_LENGTH: "Maximum distance at which to mark paired reads properly paired. Default is 3000."
+        SURJECT_OPTIONS: "Extra command line options for vg surject."
         SURJECT_CORES: "Number of cores to use when surjecting. Default is 16."
         SURJECT_MEM: "Memory, in GB, to use when surjecting. Default is 120."
         BAM_PREPROCESS_MEM: "Memory, in GB, to use when sorting and merging BAMs. Default is 20."
@@ -34,6 +35,7 @@ workflow Surject {
         Boolean PAIRED_READS = true
         Boolean PRUNE_LOW_COMPLEXITY = true
         Int MAX_FRAGMENT_LENGTH = 3000
+        String SURJECT_OPTIONS = ""
         Int SURJECT_CORES = 16
         Int SURJECT_MEM = 120
         Int BAM_PREPROCESS_MEM = 20
@@ -50,6 +52,7 @@ workflow Surject {
             in_max_fragment_length=MAX_FRAGMENT_LENGTH,
             in_paired_reads=PAIRED_READS,
             in_prune_low_complexity=PRUNE_LOW_COMPLEXITY,
+            in_surject_options=SURJECT_OPTIONS,
             nb_cores=SURJECT_CORES,
             mem_gb=SURJECT_MEM,
             vg_docker=VG_DOCKER

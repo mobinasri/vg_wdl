@@ -448,6 +448,8 @@ Parameters:
 - *BASELINE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the baseline run, instead of BASELINE_VG_DOCKER
 - *CANDIDATE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run, instead of CANDIDATE_VG_DOCKER. Set this and BASELINE_VG_GIRAFFE_DOCKER to the same image to map once and compare only what happens after mapping.
 - *CANDIDATE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the candidate run, instead of CANDIDATE_VG_DOCKER
+- *BASELINE_VG_SURJECT_OPTIONS*: (OPTIONAL) Extra command line options for vg surject in the baseline run. Set this and CANDIDATE_VG_SURJECT_OPTIONS differently to compare surjection settings rather than, or as well as, vg versions.
+- *CANDIDATE_VG_SURJECT_OPTIONS*: (OPTIONAL) Extra command line options for vg surject in the candidate run
 - *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz
 - *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz
 - *INPUT_CRAM_FILE*: Input CRAM file. Converted to FASTQ once and shared by both runs.
