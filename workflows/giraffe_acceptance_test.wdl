@@ -1,30 +1,27 @@
 version 1.0
 
-import "../tasks/aardvark_evaluation.wdl" as aardvark_tasks
 import "../tasks/bioinfo_utils.wdl" as utils
 import "./aardvark_evaluation.wdl" as aardvark_wf
 import "./deepvariant.wdl" as dv_wf
+import "./giraffe.wdl" as giraffe_wf
 import "./internal/giraffe_indexes.wdl" as index_wf
-import "./internal/map_reads.wdl" as map_wf
-import "./internal/prepare_reads.wdl" as reads_wf
 import "./internal/prepare_reference.wdl" as reference_wf
+import "./internal/split_reads.wdl" as reads_wf
 import "./internal/surject.wdl" as surject_wf
 
 workflow GiraffeAcceptanceTest {
 
     meta {
-        description: "## Giraffe acceptance test workflow \n Map one sample twice with two different vg containers, call variants on each mapping with DeepVariant, and evaluate both call sets against the same truth set with [Aardvark](https://github.com/PacificBiosciences/aardvark), to see what changing vg does to variant calling accuracy. One run is the baseline and one is the candidate; they differ only in the vg container, so anything the two runs can share is computed once and handed to both. That includes the reads (a CRAM is converted to FASTQ once), the reference and contig list, and, unless CANDIDATE_SEPARATE_INDEXES is set, the Giraffe indexes. Set CANDIDATE_SEPARATE_INDEXES when the candidate vg needs indexes the baseline vg cannot write, and either pass the candidate's indexes in the CANDIDATE_* inputs or let them be built with the candidate container. More information at [https://github.com/vgteam/vg_wdl/tree/master#giraffe-acceptance-test-workflow](https://github.com/vgteam/vg_wdl/tree/master#giraffe-acceptance-test-workflow)."
+        description: "## Giraffe acceptance test workflow \n Map and call one sample two ways, with two different vg containers, and evaluate both call sets against the same truth set with [Aardvark](https://github.com/PacificBiosciences/aardvark), to see what changing vg does to variant calling accuracy. One run is the baseline, using the known-good vg, and one is the candidate, using the vg under test. Variants are called with [DeepVariant](https://github.com/google/deepvariant), the same way in both runs. \n\n The runs are meant to differ only in the vg container, so anything they can share is computed once and handed to both: the reads, the contig list, the reference, the indexes, and the alignments when both runs would map identically. Giving the two runs the same container for a stage takes that stage out of the comparison, and when that stage is mapping the reads are only mapped once. Set CANDIDATE_SEPARATE_INDEXES when the candidate vg cannot use the baseline vg's indexes, and either pass the candidate's indexes in the CANDIDATE_* inputs or let them be built with the candidate container. More information at [https://github.com/vgteam/vg_wdl/tree/master#giraffe-acceptance-test-workflow](https://github.com/vgteam/vg_wdl/tree/master#giraffe-acceptance-test-workflow)."
     }
 
     parameter_meta {
         BASELINE_VG_DOCKER: "Container image to use when running vg for the baseline run, which is the known-good version to compare against"
         CANDIDATE_VG_DOCKER: "Container image to use when running vg for the candidate run, which is the version under test"
-        VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in both runs, whatever the baseline and candidate containers are. Set this to hold mapping fixed and test a later stage: the reads are then mapped once and the same alignments are surjected both ways."
-        VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in both runs, whatever the baseline and candidate containers are. Set this to hold surjection fixed and test mapping."
-        BASELINE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run. Overrides VG_GIRAFFE_DOCKER and BASELINE_VG_DOCKER."
-        BASELINE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the baseline run. Overrides VG_SURJECT_DOCKER and BASELINE_VG_DOCKER."
-        CANDIDATE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run. Overrides VG_GIRAFFE_DOCKER and CANDIDATE_VG_DOCKER."
-        CANDIDATE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the candidate run. Overrides VG_SURJECT_DOCKER and CANDIDATE_VG_DOCKER."
+        BASELINE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run, instead of BASELINE_VG_DOCKER"
+        BASELINE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the baseline run, instead of BASELINE_VG_DOCKER"
+        CANDIDATE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run, instead of CANDIDATE_VG_DOCKER. Set this and BASELINE_VG_GIRAFFE_DOCKER to the same image to map once and compare only what happens after mapping."
+        CANDIDATE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the candidate run, instead of CANDIDATE_VG_DOCKER"
         INPUT_READ_FILE_1: "Input sample 1st read pair fastq.gz"
         INPUT_READ_FILE_2: "Input sample 2nd read pair fastq.gz"
         INPUT_CRAM_FILE: "Input CRAM file. Converted to FASTQ once and shared by both runs."
@@ -46,10 +43,6 @@ workflow GiraffeAcceptanceTest {
         TRUTH_VCF_INDEX: "(OPTIONAL) Tabix index for TRUTH_VCF. Made if not provided."
         EVALUATION_REGIONS_BED: "BED of regions to evaluate in. Required, because Aardvark needs to be told where the truth set is complete."
         STRATIFICATION_ARCHIVE: "(OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the Aardvark results down by"
-        RUN_HAPPY_EVALUATION: "Should hap.py and vcfeval also be run on each call set, in addition to Aardvark? Default is 'false'."
-        RESTRICT_REGIONS_BED: "(OPTIONAL) BED to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set."
-        TARGET_REGION: "(OPTIONAL) Contig or region to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set."
-        RUN_STANDALONE_VCFEVAL: "Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs). Only used if RUN_HAPPY_EVALUATION is set."
         OUTPUT_GAF: "Should a GAF file with the aligned reads be saved for each run? When both runs map the same way there is only one set of alignments, so both outputs are the same file. Default is 'false'."
         OUTPUT_BAM: "Should the merged BAM be saved for each run? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
@@ -100,14 +93,11 @@ workflow GiraffeAcceptanceTest {
         MAKE_EXAMPLES_MEM: "Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM."
         AARDVARK_CORES: "Number of cores to use when running Aardvark. Default is 16."
         AARDVARK_MEM: "Memory, in GB, to use when running Aardvark. Default is 30."
-        EVAL_MEM: "Memory, in GB, to use when evaluating variant calls with hap.py. Default is 60."
     }
 
     input {
         String BASELINE_VG_DOCKER = "quay.io/vgteam/vg:v1.64.0"
         String CANDIDATE_VG_DOCKER = "quay.io/vgteam/vg:v1.64.0"
-        String? VG_GIRAFFE_DOCKER
-        String? VG_SURJECT_DOCKER
         String? BASELINE_VG_GIRAFFE_DOCKER
         String? BASELINE_VG_SURJECT_DOCKER
         String? CANDIDATE_VG_GIRAFFE_DOCKER
@@ -133,10 +123,6 @@ workflow GiraffeAcceptanceTest {
         File? TRUTH_VCF_INDEX
         File EVALUATION_REGIONS_BED
         File? STRATIFICATION_ARCHIVE
-        Boolean RUN_HAPPY_EVALUATION = false
-        File? RESTRICT_REGIONS_BED
-        String? TARGET_REGION
-        Boolean RUN_STANDALONE_VCFEVAL = true
         Boolean OUTPUT_GAF = false
         Boolean OUTPUT_BAM = false
         Boolean PAIRED_READS = true
@@ -187,8 +173,18 @@ workflow GiraffeAcceptanceTest {
         Int MAKE_EXAMPLES_MEM = CALL_MEM
         Int AARDVARK_CORES = 16
         Int AARDVARK_MEM = 30
-        Int EVAL_MEM = 60
     }
+
+    # Which container each vg stage uses. A stage that gets the same container on
+    # both sides is not under test.
+    String baseline_giraffe_docker = select_first([BASELINE_VG_GIRAFFE_DOCKER, BASELINE_VG_DOCKER])
+    String candidate_giraffe_docker = select_first([CANDIDATE_VG_GIRAFFE_DOCKER, CANDIDATE_VG_DOCKER])
+    String baseline_surject_docker = select_first([BASELINE_VG_SURJECT_DOCKER, BASELINE_VG_DOCKER])
+    String candidate_surject_docker = select_first([CANDIDATE_VG_SURJECT_DOCKER, CANDIDATE_VG_DOCKER])
+
+    # Separate candidate indexes mean a different graph to map against, so the
+    # alignments can't be shared no matter what container maps them.
+    Boolean share_mapping = !CANDIDATE_SEPARATE_INDEXES && baseline_giraffe_docker == candidate_giraffe_docker
 
     ####################################################################
     # Everything the two runs are supposed to have in common is set up #
@@ -196,17 +192,20 @@ workflow GiraffeAcceptanceTest {
     # differs between them.                                            #
     ####################################################################
 
-    # Both runs have to see exactly the same reads, so a CRAM is converted once
-    # up front instead of once inside each run.
-    call reads_wf.PrepareReads {
+    # Both runs have to see exactly the same reads, split exactly the same way, so
+    # the reads are converted and chunked once up front.
+    call reads_wf.SplitReads {
         input:
         INPUT_READ_FILE_1=INPUT_READ_FILE_1,
         INPUT_READ_FILE_2=INPUT_READ_FILE_2,
         INPUT_CRAM_FILE=INPUT_CRAM_FILE,
         CRAM_REF=CRAM_REF,
         CRAM_REF_INDEX=CRAM_REF_INDEX,
+        # Haplotype sampling counts kmers over all of a sample's reads at once.
+        OUTPUT_WHOLE_READS=HAPLOTYPE_SAMPLING,
         PAIRED_READS=PAIRED_READS,
         INTERLEAVED_READS=INTERLEAVED_READS,
+        READS_PER_CHUNK=READS_PER_CHUNK,
         SPLIT_READ_CORES=SPLIT_READ_CORES,
         SPLIT_READ_MEM=SPLIT_READ_MEM
     }
@@ -230,7 +229,7 @@ workflow GiraffeAcceptanceTest {
         VG_DOCKER=BASELINE_VG_DOCKER
     }
 
-    # Both evaluations, and hap.py if it is running, need the truth set indexed.
+    # Both evaluations need the truth set indexed.
     if (!defined(TRUTH_VCF_INDEX)) {
         call utils.indexVcf as indexTruthVcf {
             input:
@@ -238,14 +237,6 @@ workflow GiraffeAcceptanceTest {
         }
     }
     File truth_vcf_index = select_first([TRUTH_VCF_INDEX, indexTruthVcf.vcf_index_file])
-
-    # hap.py in the DeepVariant workflow turns itself on when it is given a
-    # truth set, so we only hand it one when it is wanted.
-    if (RUN_HAPPY_EVALUATION) {
-        File happy_truth_vcf = TRUTH_VCF
-        File happy_truth_vcf_index = truth_vcf_index
-        File happy_regions_bed = EVALUATION_REGIONS_BED
-    }
 
     ###############################################################
     # Indexes: one set for both runs, or one set per run          #
@@ -259,8 +250,8 @@ workflow GiraffeAcceptanceTest {
         ZIPCODES_FILE=ZIPCODES_FILE,
         HAPL_FILE=HAPL_FILE,
         HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
-        INPUT_READ_FILE_FIRST=PrepareReads.read_1_file,
-        INPUT_READ_FILE_SECOND=PrepareReads.read_2_file,
+        INPUT_READ_FILE_FIRST=SplitReads.read_1_file,
+        INPUT_READ_FILE_SECOND=SplitReads.read_2_file,
         GIRAFFE_PRESET=GIRAFFE_PRESET,
         INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
         INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
@@ -281,8 +272,8 @@ workflow GiraffeAcceptanceTest {
             ZIPCODES_FILE=CANDIDATE_ZIPCODES_FILE,
             HAPL_FILE=CANDIDATE_HAPL_FILE,
             HAPLOTYPE_SAMPLING=HAPLOTYPE_SAMPLING,
-            INPUT_READ_FILE_FIRST=PrepareReads.read_1_file,
-            INPUT_READ_FILE_SECOND=PrepareReads.read_2_file,
+            INPUT_READ_FILE_FIRST=SplitReads.read_1_file,
+            INPUT_READ_FILE_SECOND=SplitReads.read_2_file,
             GIRAFFE_PRESET=GIRAFFE_PRESET,
             INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
             INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
@@ -301,71 +292,76 @@ workflow GiraffeAcceptanceTest {
     File? candidate_zipcodes_file = if CANDIDATE_SEPARATE_INDEXES then candidateIndexes.zipcodes_file else baselineIndexes.zipcodes_file
 
     ###############################################################
-    # The two runs, differing only in which vg they use           #
-    ###############################################################
-
-    # Which container each vg stage uses. A stage that gets the same container on
-    # both sides is not under test, and mapping in particular is then done once
-    # and its alignments handed to both surjections, so that testing surjection
-    # doesn't pay for mapping twice.
-    String baseline_giraffe_docker = select_first([BASELINE_VG_GIRAFFE_DOCKER, VG_GIRAFFE_DOCKER, BASELINE_VG_DOCKER])
-    String candidate_giraffe_docker = select_first([CANDIDATE_VG_GIRAFFE_DOCKER, VG_GIRAFFE_DOCKER, CANDIDATE_VG_DOCKER])
-    String baseline_surject_docker = select_first([BASELINE_VG_SURJECT_DOCKER, VG_SURJECT_DOCKER, BASELINE_VG_DOCKER])
-    String candidate_surject_docker = select_first([CANDIDATE_VG_SURJECT_DOCKER, VG_SURJECT_DOCKER, CANDIDATE_VG_DOCKER])
-
-    # Separate candidate indexes mean a different graph to map against, so the
-    # alignments can't be shared no matter what container maps them.
-    Boolean share_mapping = !CANDIDATE_SEPARATE_INDEXES && baseline_giraffe_docker == candidate_giraffe_docker
-
-    ###############################################################
     # Map: once if both sides map the same way, otherwise twice    #
     ###############################################################
 
-    call map_wf.MapReads as baselineMapping {
+    call giraffe_wf.Giraffe as baselineMapping {
         input:
-        INPUT_READ_FILE_1=PrepareReads.read_1_file,
-        INPUT_READ_FILE_2=PrepareReads.read_2_file,
+        READ_CHUNKS_1=SplitReads.read_chunks_1,
+        READ_CHUNKS_2=SplitReads.read_chunks_2,
         GBZ_FILE=baselineIndexes.gbz_file,
         DIST_FILE=baselineIndexes.dist_file,
         MIN_FILE=baselineIndexes.min_file,
         ZIPCODES_FILE=baselineIndexes.zipcodes_file,
         SAMPLE_NAME=SAMPLE_NAME,
-        OUTPUT_MERGED_GAF=OUTPUT_GAF,
+        # Surjection is a stage of its own here, so this only maps, and hands
+        # back the alignment chunks for surjection to pick up.
+        OUTPUT_SINGLE_BAM=false,
+        OUTPUT_CALLING_BAMS=false,
+        OUTPUT_GAF=OUTPUT_GAF,
+        OUTPUT_GAF_CHUNKS=true,
         PAIRED_READS=PAIRED_READS,
         INTERLEAVED_READS=INTERLEAVED_READS,
-        READS_PER_CHUNK=READS_PER_CHUNK,
+        PATH_LIST_FILE=PrepareReference.path_list_file,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=PrepareReference.reference_file,
+        REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
+        REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
         GIRAFFE_PRESET=GIRAFFE_PRESET,
         GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
-        SPLIT_READ_CORES=SPLIT_READ_CORES,
         MAP_CORES=MAP_CORES,
         MAP_MEM=MAP_MEM,
-        VG_DOCKER=baseline_giraffe_docker
+        # The indexes are already made, so mapping never samples again.
+        HAPLOTYPE_SAMPLING=false,
+        VG_DOCKER=BASELINE_VG_DOCKER,
+        VG_GIRAFFE_DOCKER=baseline_giraffe_docker
     }
 
     if (!share_mapping) {
-        call map_wf.MapReads as candidateMapping {
+        call giraffe_wf.Giraffe as candidateMapping {
             input:
-            INPUT_READ_FILE_1=PrepareReads.read_1_file,
-            INPUT_READ_FILE_2=PrepareReads.read_2_file,
+            READ_CHUNKS_1=SplitReads.read_chunks_1,
+            READ_CHUNKS_2=SplitReads.read_chunks_2,
             GBZ_FILE=candidate_gbz_file,
             DIST_FILE=candidate_dist_file,
             MIN_FILE=candidate_min_file,
             ZIPCODES_FILE=candidate_zipcodes_file,
             SAMPLE_NAME=SAMPLE_NAME,
-            OUTPUT_MERGED_GAF=OUTPUT_GAF,
+            OUTPUT_SINGLE_BAM=false,
+            OUTPUT_CALLING_BAMS=false,
+            OUTPUT_GAF=OUTPUT_GAF,
+            OUTPUT_GAF_CHUNKS=true,
             PAIRED_READS=PAIRED_READS,
             INTERLEAVED_READS=INTERLEAVED_READS,
-            READS_PER_CHUNK=READS_PER_CHUNK,
+            PATH_LIST_FILE=PrepareReference.path_list_file,
+            REFERENCE_PREFIX=REFERENCE_PREFIX,
+            REFERENCE_FILE=PrepareReference.reference_file,
+            REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
+            REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
             GIRAFFE_PRESET=GIRAFFE_PRESET,
             GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
-            SPLIT_READ_CORES=SPLIT_READ_CORES,
             MAP_CORES=MAP_CORES,
             MAP_MEM=MAP_MEM,
-            VG_DOCKER=candidate_giraffe_docker
+            HAPLOTYPE_SAMPLING=false,
+            VG_DOCKER=CANDIDATE_VG_DOCKER,
+            VG_GIRAFFE_DOCKER=candidate_giraffe_docker
         }
     }
 
-    Array[File] candidate_gaf_chunks = select_first([candidateMapping.gaf_chunks, baselineMapping.gaf_chunks])
+    # We asked for the chunks, so they are there, but the mapping runs hand them
+    # back optionally.
+    Array[File] baseline_gaf_chunks = select_first([baselineMapping.output_gaf_chunks])
+    Array[File] candidate_gaf_chunks = select_first([candidateMapping.output_gaf_chunks, baselineMapping.output_gaf_chunks])
 
     ###############################################################
     # Surject: twice, since this is a stage that can be tested     #
@@ -375,7 +371,7 @@ workflow GiraffeAcceptanceTest {
     # alignments name its nodes.
     call surject_wf.Surject as baselineSurjection {
         input:
-        GAF_CHUNKS=baselineMapping.gaf_chunks,
+        GAF_CHUNKS=baseline_gaf_chunks,
         GBZ_FILE=baselineIndexes.gbz_file,
         PATH_LIST_FILE=PrepareReference.path_list_file,
         REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,
@@ -431,12 +427,6 @@ workflow GiraffeAcceptanceTest {
         REALIGN_INDELS=REALIGN_INDELS,
         REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
         MIN_MAPQ=MIN_MAPQ,
-        TRUTH_VCF=happy_truth_vcf,
-        TRUTH_VCF_INDEX=happy_truth_vcf_index,
-        EVALUATION_REGIONS_BED=happy_regions_bed,
-        RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
-        TARGET_REGION=TARGET_REGION,
-        RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
         DV_MODEL_TYPE=DV_MODEL_TYPE,
         DV_MODEL_META=DV_MODEL_META,
         DV_MODEL_INDEX=DV_MODEL_INDEX,
@@ -454,8 +444,7 @@ workflow GiraffeAcceptanceTest {
         CALL_CORES=CALL_CORES,
         CALL_MEM=CALL_MEM,
         MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
-        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
-        EVAL_MEM=EVAL_MEM
+        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM
     }
 
     call dv_wf.DeepVariant as candidateCalling {
@@ -476,12 +465,6 @@ workflow GiraffeAcceptanceTest {
         REALIGN_INDELS=REALIGN_INDELS,
         REALIGNMENT_EXPANSION_BASES=REALIGNMENT_EXPANSION_BASES,
         MIN_MAPQ=MIN_MAPQ,
-        TRUTH_VCF=happy_truth_vcf,
-        TRUTH_VCF_INDEX=happy_truth_vcf_index,
-        EVALUATION_REGIONS_BED=happy_regions_bed,
-        RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
-        TARGET_REGION=TARGET_REGION,
-        RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
         DV_MODEL_TYPE=DV_MODEL_TYPE,
         DV_MODEL_META=DV_MODEL_META,
         DV_MODEL_INDEX=DV_MODEL_INDEX,
@@ -499,8 +482,7 @@ workflow GiraffeAcceptanceTest {
         CALL_CORES=CALL_CORES,
         CALL_MEM=CALL_MEM,
         MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
-        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
-        EVAL_MEM=EVAL_MEM
+        MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM
     }
 
     ###############################################################
@@ -537,31 +519,17 @@ workflow GiraffeAcceptanceTest {
         EVAL_MEM=AARDVARK_MEM
     }
 
-    call aardvark_tasks.compareAardvarkSummaries {
-        input:
-        in_left_summary=baselineEvaluation.aardvark_summary,
-        in_right_summary=candidateEvaluation.aardvark_summary,
-        in_left_label="baseline",
-        in_right_label="candidate",
-        in_output_name=SAMPLE_NAME + ".baseline_vs_candidate.tsv"
-    }
-
     output {
-        File aardvark_comparison = compareAardvarkSummaries.output_comparison
         File baseline_aardvark_summary = baselineEvaluation.aardvark_summary
         File candidate_aardvark_summary = candidateEvaluation.aardvark_summary
         Array[File] baseline_aardvark_all_files = baselineEvaluation.aardvark_all_files
         Array[File] candidate_aardvark_all_files = candidateEvaluation.aardvark_all_files
-        File? baseline_happy_evaluation_archive = baselineCalling.output_happy_evaluation_archive
-        File? candidate_happy_evaluation_archive = candidateCalling.output_happy_evaluation_archive
-        File? baseline_vcfeval_evaluation_archive = baselineCalling.output_vcfeval_evaluation_archive
-        File? candidate_vcfeval_evaluation_archive = candidateCalling.output_vcfeval_evaluation_archive
         File baseline_vcf = baselineCalling.output_vcf
         File baseline_vcf_index = baselineCalling.output_vcf_index
         File candidate_vcf = candidateCalling.output_vcf
         File candidate_vcf_index = candidateCalling.output_vcf_index
-        File? baseline_gaf = baselineMapping.merged_gaf
-        File? candidate_gaf = if share_mapping then baselineMapping.merged_gaf else candidateMapping.merged_gaf
+        File? baseline_gaf = baselineMapping.output_gaf
+        File? candidate_gaf = if share_mapping then baselineMapping.output_gaf else candidateMapping.output_gaf
         File? baseline_bam = baselineCalling.output_bam
         File? baseline_bam_index = baselineCalling.output_bam_index
         File? candidate_bam = candidateCalling.output_bam

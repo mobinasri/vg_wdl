@@ -5,11 +5,11 @@ import "../../tasks/gam_gaf_utils.wdl" as gautils
 
 workflow Surject {
     meta {
-        description: "## Surject workflow \n Project graph alignments onto the reference paths with `vg surject` and hand back one sorted BAM. The GAF chunks are surjected in parallel, then sorted and merged, so this takes the chunks MapReads produces rather than a single merged GAF. No BAM post-processing (left-shifting, indel realignment, splitting by contig) happens here; that belongs to whatever calls variants next. Kept separate from mapping so that one set of alignments can be surjected more than once, with different vg versions or different settings."
+        description: "## Surject workflow \n Project graph alignments onto the reference paths with `vg surject` and hand back one sorted BAM. Alignments are taken as GAF chunks, which are surjected in parallel and then sorted and merged. No BAM post-processing (left-shifting, indel realignment, splitting by contig) happens here."
     }
 
     parameter_meta {
-        GAF_CHUNKS: "GAF chunks to surject in parallel, as produced by MapReads"
+        GAF_CHUNKS: "Chunks of a GAF of graph alignments, to surject in parallel"
         GBZ_FILE: "Path to the .gbz index file the alignments are against. Has to be the graph the reads were mapped to, since the alignments name its nodes."
         PATH_LIST_FILE: "Text file where each line is a path name in the GBZ index to surject onto"
         REFERENCE_DICT_FILE: "Sequence dictionary of the reference, used to order the BAM's contigs"

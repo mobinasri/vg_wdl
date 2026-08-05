@@ -167,6 +167,8 @@ Parameters (semi-auto-generated from the parameter_meta section):
 - *CRAM_REF*: Genome fasta file associated with the CRAM file
 - *CRAM_REF_INDEX*: Index of the fasta file associated with the CRAM file
 - *INPUT_BAM_FILE*: Input BAM file to realign
+- *READ_CHUNKS_1*: (OPTIONAL) Chunks of the 1st reads to map, already split. Given these, the reads are not read or split here, and INPUT_READ_FILE_1 is only used for haplotype sampling.
+- *READ_CHUNKS_2*: (OPTIONAL) Chunks of the 2nd reads to map, already split, in the same order as READ_CHUNKS_1. Only used with READ_CHUNKS_1, and only when the reads are paired and not interleaved.
 - *GBZ_FILE*: Path to .gbz index file
 - *DIST_FILE*: Path to .dist index file
 - *MIN_FILE*: Path to .min index file. Optional if using haplotype sampling.
@@ -176,6 +178,7 @@ Parameters (semi-auto-generated from the parameter_meta section):
   bams' (one per contig) won't be outputed. Default is 'true'.
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs be saved? Default is 'false'.
 - *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved? Default is 'false'.
+- *OUTPUT_GAF_CHUNKS*: Should the unmerged GAF chunks be saved, for a caller that wants to project them itself? Default is 'false'.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
 - *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
 - *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 000 000.
@@ -409,48 +412,47 @@ set with [Aardvark](https://github.com/PacificBiosciences/aardvark), to see what
 accuracy. One run is the baseline (the known-good vg) and one is the candidate (the vg under test). Variants are called
 with [DeepVariant](https://github.com/google/deepvariant), which is the same in both runs.
 
-The two runs are meant to differ only in the vg container, so everything they can share is computed once and handed to
-both: the reads (a CRAM is converted to FASTQ once), the contig list, the reference, the Giraffe indexes, and the
-alignments when both runs would map identically. Sharing the contig list and reference is what makes the two call sets
-comparable, so those are always shared. The indexes are shared by default, and built with the baseline vg if they aren't
-passed in.
+The workflow runs in stages: index, map, surject, call, evaluate. The two runs are meant to differ only in the vg
+container, so everything they can share is computed once and handed to both: the reads (converted from a CRAM and split
+into chunks once), the contig list, the reference, the indexes, and the alignments when both runs would map identically.
+Sharing the contig list and reference is what makes the two call sets comparable, so those are always shared. The
+indexes are shared by default, and built with the baseline vg if they aren't passed in.
 
 If the candidate vg cannot use the baseline vg's indexes, set *CANDIDATE_SEPARATE_INDEXES*. The candidate run then uses
 the *CANDIDATE_\** index inputs, and anything not passed there is built with the candidate container. With haplotype
 sampling on, the sampled graph and its indexes count as indexes: they are made once with the baseline vg by default,
 and once per run when *CANDIDATE_SEPARATE_INDEXES* is set.
 
-The workflow runs in stages: index, map, surject, call, evaluate. Each run uses its side's vg for every vg stage unless
-a stage is pinned. Pinning a stage with *VG_GIRAFFE_DOCKER* or *VG_SURJECT_DOCKER* gives both runs the same container
-for it, which takes that stage out of the comparison. Pinning mapping also means the reads are only mapped once: the
-same alignments are then surjected both ways, so testing surjection doesn't pay for mapping twice.
+Each run uses its side's vg for mapping and for surjection, unless given a container for one of those stages
+specifically. Giving both runs the same container for a stage takes that stage out of the comparison, and when that
+stage is mapping the reads are only mapped once and the same alignments are surjected both ways.
 
-To compare two versions of `vg surject` while mapping with the baseline vg:
-
-```json
-{
-  "GiraffeAcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
-  "GiraffeAcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
-  "GiraffeAcceptanceTest.VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:v1.64.0"
-}
-```
-
-To compare the same two versions of `vg surject` while mapping with the *candidate* vg instead, point the pin at the
-candidate container; nothing else changes:
+So to compare two versions of `vg surject` while mapping with the baseline vg in both runs:
 
 ```json
 {
   "GiraffeAcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
   "GiraffeAcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
-  "GiraffeAcceptanceTest.VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE"
+  "GiraffeAcceptanceTest.CANDIDATE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:v1.64.0"
 }
 ```
 
-To compare two versions of `vg giraffe` while surjecting the same way in both runs, pin *VG_SURJECT_DOCKER* instead.
-Mapping then runs twice, because that is what is being compared.
+and to compare the same two versions of `vg surject` while mapping with the *candidate* vg instead, point both mapping
+containers at the candidate:
 
-The main output is *aardvark_comparison*, a TSV with the baseline and candidate value of every Aardvark metric, and the
-difference, on the same line. The full Aardvark output of each run is also returned.
+```json
+{
+  "GiraffeAcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
+  "GiraffeAcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
+  "GiraffeAcceptanceTest.BASELINE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
+  "GiraffeAcceptanceTest.CANDIDATE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE"
+}
+```
+
+To compare two versions of `vg giraffe` while surjecting the same way in both runs, give both sides the same surject
+container instead. Mapping then runs twice, because that is what is being compared.
+
+The outputs are the Aardvark summary and full output directory for each run, plus each run's VCF.
 
 - workflow file: [workflows/giraffe_acceptance_test.wdl](workflows/giraffe_acceptance_test.wdl)
 
@@ -458,12 +460,10 @@ Parameters (semi-auto-generated from the parameter_meta section):
 
 - *BASELINE_VG_DOCKER*: Container image to use when running vg for the baseline run, which is the known-good version to compare against
 - *CANDIDATE_VG_DOCKER*: Container image to use when running vg for the candidate run, which is the version under test
-- *VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in both runs, whatever the baseline and candidate containers are. Set this to hold mapping fixed and test a later stage: the reads are then mapped once and the same alignments are surjected both ways.
-- *VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in both runs, whatever the baseline and candidate containers are. Set this to hold surjection fixed and test mapping.
-- *BASELINE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run. Overrides VG_GIRAFFE_DOCKER and BASELINE_VG_DOCKER.
-- *BASELINE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the baseline run. Overrides VG_SURJECT_DOCKER and BASELINE_VG_DOCKER.
-- *CANDIDATE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run. Overrides VG_GIRAFFE_DOCKER and CANDIDATE_VG_DOCKER.
-- *CANDIDATE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the candidate run. Overrides VG_SURJECT_DOCKER and CANDIDATE_VG_DOCKER.
+- *BASELINE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run, instead of BASELINE_VG_DOCKER
+- *BASELINE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the baseline run, instead of BASELINE_VG_DOCKER
+- *CANDIDATE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run, instead of CANDIDATE_VG_DOCKER. Set this and BASELINE_VG_GIRAFFE_DOCKER to the same image to map once and compare only what happens after mapping.
+- *CANDIDATE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the candidate run, instead of CANDIDATE_VG_DOCKER
 - *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz
 - *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz
 - *INPUT_CRAM_FILE*: Input CRAM file. Converted to FASTQ once and shared by both runs.
@@ -485,10 +485,6 @@ Parameters (semi-auto-generated from the parameter_meta section):
 - *TRUTH_VCF_INDEX*: (OPTIONAL) Tabix index for TRUTH_VCF. Made if not provided.
 - *EVALUATION_REGIONS_BED*: BED of regions to evaluate in. Required, because Aardvark needs to be told where the truth set is complete.
 - *STRATIFICATION_ARCHIVE*: (OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the Aardvark results down by
-- *RUN_HAPPY_EVALUATION*: Should hap.py and vcfeval also be run on each call set, in addition to Aardvark? Default is 'false'.
-- *RESTRICT_REGIONS_BED*: (OPTIONAL) BED to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set.
-- *TARGET_REGION*: (OPTIONAL) Contig or region to restrict the hap.py comparison to. Only used if RUN_HAPPY_EVALUATION is set.
-- *RUN_STANDALONE_VCFEVAL*: Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs). Only used if RUN_HAPPY_EVALUATION is set.
 - *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved for each run? When both runs map the same way there is only one set of alignments, so both outputs are the same file. Default is 'false'.
 - *OUTPUT_BAM*: Should the merged BAM be saved for each run? Default is 'false'.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
@@ -539,7 +535,6 @@ Parameters (semi-auto-generated from the parameter_meta section):
 - *MAKE_EXAMPLES_MEM*: Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM.
 - *AARDVARK_CORES*: Number of cores to use when running Aardvark. Default is 16.
 - *AARDVARK_MEM*: Memory, in GB, to use when running Aardvark. Default is 30.
-- *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls with hap.py. Default is 60.
 
 Related
 topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [CRAM input](#CRAM-input), [reads chunking](#Reads-chunking), [path list](#Path-list), [single-end reads](#Single-end-reads), [interleaved reads](#Interleaved-reads), [HPRC pangenomes](#HPRC-pangenomes).
@@ -643,13 +638,11 @@ are steps that several workflows need to do the same way, pulled out so there is
 meant to be run on their own. Their parameters are documented in their own `parameter_meta` sections rather than here,
 and they can change without notice.
 
-- [workflows/internal/prepare_reads.wdl](workflows/internal/prepare_reads.wdl) (`PrepareReads`): get a sample's reads as
-  FASTQ, converting a CRAM or a BAM if that is what arrived.
+- [workflows/internal/split_reads.wdl](workflows/internal/split_reads.wdl) (`SplitReads`): get a sample's reads as FASTQ,
+  converting a CRAM or a BAM if that is what arrived, and split them into chunks to map in parallel.
 - [workflows/internal/prepare_reference.wdl](workflows/internal/prepare_reference.wdl) (`PrepareReference`): work out
   which contigs to work on and get a FASTA reference for them, with its `.fai` and `.dict`, extracting them from the
   graph if they weren't provided.
-- [workflows/internal/map_reads.wdl](workflows/internal/map_reads.wdl) (`MapReads`): map FASTQ reads to the pangenome
-  with `vg giraffe`, in parallel over chunks of reads, and hand back the GAF chunks.
 - [workflows/internal/surject.wdl](workflows/internal/surject.wdl) (`Surject`): project GAF chunks onto the reference
   paths with `vg surject` and merge them into one sorted BAM.
 - [workflows/internal/giraffe_indexes.wdl](workflows/internal/giraffe_indexes.wdl) (`GiraffeIndexes`): produce the GBZ,
@@ -889,10 +882,10 @@ Continuous integration runs `miniwdl check` on every workflow, and separately ru
 python3 scripts/lint_wdl_docs.py
 ```
 
-which checks that every workflow input is described in the workflow's `parameter_meta` section, that every workflow
-meant to be run has a section in this README listing all of its parameters, and that the example inputs
-in [params/](params) only set inputs that still exist. [Internal subworkflows](#internal-subworkflows) still need
-`parameter_meta`, but are not expected to have a README section. Files that have never satisfied any of this are listed
+which checks that every workflow input is described in the workflow's `parameter_meta` section, and that every workflow
+meant to be run has a section in this README listing all of its parameters.
+[Internal subworkflows](#internal-subworkflows) still need `parameter_meta`, but are not expected to have a README
+section. Files that have never satisfied any of this are listed
 in [scripts/doc_lint_exemptions.txt](scripts/doc_lint_exemptions.txt); new workflows are expected not to need an entry
 there.
 

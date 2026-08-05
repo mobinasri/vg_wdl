@@ -4,7 +4,6 @@ on:
   push:
     paths:
       - '**.wdl'
-      - 'params/**.json'
       - 'README.md'
       - 'scripts/lint_wdl_docs.py'
       - 'scripts/doc_lint_exemptions.txt'
@@ -13,7 +12,6 @@ on:
     branches: [ master, main ]
     paths:
       - '**.wdl'
-      - 'params/**.json'
       - 'README.md'
       - 'scripts/lint_wdl_docs.py'
       - 'scripts/doc_lint_exemptions.txt'

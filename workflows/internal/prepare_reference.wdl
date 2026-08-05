@@ -6,7 +6,7 @@ import "../../tasks/vg_map_hts.wdl" as map
 
 workflow PrepareReference {
     meta {
-        description: "## Prepare reference workflow \n Work out which contigs to work on and get a FASTA reference for them, with its .fai and .dict. Anything the caller provides is used as it is; a contig list and a reference that aren't provided are extracted from the graph, so that the reference's contigs match the graph's paths exactly. This is what the mapping and calling workflows need before they can surject, split by contig, or call variants; it is a workflow of its own so that a caller running several pipelines over one graph can do it once and keep every run on the same contigs and the same reference bases."
+        description: "## Prepare reference workflow \n Work out which contigs to work on and get a FASTA reference for them, with its .fai and .dict. Anything the caller provides is used as it is; a contig list and a reference that aren't provided are extracted from the graph, so that the reference's contigs match the graph's paths exactly."
     }
 
     parameter_meta {

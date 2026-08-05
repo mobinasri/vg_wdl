@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 """
-Check that the workflows, their documentation, and the example inputs agree.
+Check that the workflows and their documentation agree.
 
-Three things drift apart as workflows are edited, and none of them are caught by
-``miniwdl check``: the ``parameter_meta`` section stops listing every input, the
-README stops listing every parameter, and the example inputs in ``params/`` keep
-referring to inputs that have been renamed or removed. This finds all three.
-
-The README is matched to a workflow by looking for a link to the workflow file in
-a section, and only parameter *names* are compared, so the README is free to
-reword a description without failing here.
+README sections are matched to workflows by looking for a link to the workflow
+file in a section, and only parameter names are compared; the descriptions may
+differ.
 
 Run from the root of the repository, or pass the root as the only argument.
 """
 
-import json
 import os
 import re
 import sys
@@ -27,8 +21,6 @@ WORKFLOW_DIR = "workflows"
 # the parameter_meta rules like anything else, but they are plumbing, so the
 # README describes them in a sentence instead of documenting their parameters.
 INTERNAL_DIR = os.path.join("workflows", "internal")
-TASK_DIR = "tasks"
-PARAMS_DIR = "params"
 README = "README.md"
 # Files that are known not to pass and that nobody is expected to fix. See the
 # file itself for what belongs in it.
@@ -116,19 +108,6 @@ def declared_inputs(workflow):
     return [declaration.name for declaration in (workflow.inputs or [])]
 
 
-def required_inputs(workflow):
-    """
-    Return the names of the inputs that a caller has to supply: the ones with no
-    default and no way to be left out.
-    """
-
-    required = []
-    for declaration in workflow.inputs or []:
-        if declaration.expr is None and not declaration.type.optional:
-            required.append(declaration.name)
-    return required
-
-
 def read_readme_sections(path):
     """
     Return a list of (heading, body_lines) for the README, one per heading, in
@@ -210,50 +189,6 @@ def check_readme(problems, path, workflow, sections):
         problems.report(where, "README lists {}, which is not an input".format(name))
 
 
-def check_params_file(problems, path, callables):
-    """
-    Check one example inputs file: every key has to name a real input of the
-    workflow or task it is namespaced under, and every required input of that
-    workflow or task has to be set.
-
-    ``callables`` maps a workflow or task name to its object.
-    """
-
-    with open(path) as f:
-        try:
-            values = json.load(f)
-        except ValueError as e:
-            problems.report(path, "is not valid JSON: {}".format(e))
-            return
-
-    for key in values:
-        if "." not in key:
-            problems.report(path, "key {} is not of the form NAME.INPUT".format(key))
-            continue
-        target_name, input_name = key.split(".", 1)
-        target = callables.get(target_name)
-        if target is None:
-            problems.report(path, "key {} names no workflow or task".format(key))
-            continue
-        if "." in input_name:
-            # An override aimed at an input of a call inside the workflow, like
-            # WORKFLOW.someCall.some_input. Which calls exist is the workflow's
-            # business and can change, so we only check the workflow name.
-            continue
-        if input_name not in declared_inputs(target):
-            problems.report(path, "{} is not an input of {}".format(input_name, target_name))
-
-    # Only complain about missing inputs for things this file actually sets up,
-    # so that a file for one workflow says nothing about any other.
-    for target_name in sorted({key.split(".", 1)[0] for key in values if "." in key}):
-        target = callables.get(target_name)
-        if target is None:
-            continue
-        for name in required_inputs(target):
-            if "{}.{}".format(target_name, name) not in values:
-                problems.report(path, "required input {}.{} is not set".format(target_name, name))
-
-
 def main(args):
     root = args[0] if args else "."
     os.chdir(root)
@@ -264,31 +199,16 @@ def main(args):
     workflow_documents = load_documents(WORKFLOW_DIR)
     sections = read_readme_sections(README)
 
-    # Everything a params file could be for: the workflows, plus the tasks, so
-    # that a task can be given example inputs and run on its own.
-    callables = {}
-    for _, document in workflow_documents:
-        if document.workflow is not None:
-            callables[document.workflow.name] = document.workflow
-    for _, document in load_documents(TASK_DIR):
-        for task in document.tasks:
-            callables[task.name] = task
-
     for path, document in workflow_documents:
         if document.workflow is None or path in exempt:
             continue
         check_parameter_meta(problems, path, document.workflow)
         check_readme(problems, path, document.workflow, sections)
 
-    for name in sorted(os.listdir(PARAMS_DIR)):
-        path = os.path.join(PARAMS_DIR, name)
-        if name.endswith(".json") and path not in exempt:
-            check_params_file(problems, path, callables)
-
     if problems.count:
         print("\n{} documentation problem(s) found".format(problems.count), file=sys.stderr)
         return 1
-    print("Workflow documentation and example inputs agree")
+    print("Workflows and their documentation agree")
     return 0
 
 

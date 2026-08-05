@@ -2,10 +2,11 @@ version 1.0
 
 import "../tasks/validation.wdl" as validation
 import "../tasks/bioinfo_utils.wdl" as utils
+import "../tasks/gam_gaf_utils.wdl" as gautils
+import "../tasks/vg_map_hts.wdl" as map
 import "./haplotype_sampling.wdl" as hapl
-import "./internal/map_reads.wdl" as map_wf
-import "./internal/prepare_reads.wdl" as reads_wf
 import "./internal/prepare_reference.wdl" as reference_wf
+import "./internal/split_reads.wdl" as reads_wf
 import "./internal/surject.wdl" as surject_wf
 
 workflow Giraffe {
@@ -19,6 +20,8 @@ workflow Giraffe {
         CRAM_REF: "Genome fasta file associated with the CRAM file"
         CRAM_REF_INDEX: "Index of the fasta file associated with the CRAM file"
         INPUT_BAM_FILE: "Input BAM file to realign"
+        READ_CHUNKS_1: "(OPTIONAL) Chunks of the 1st reads to map, already split. Given these, the reads are not read or split here, and INPUT_READ_FILE_1 is only used for haplotype sampling."
+        READ_CHUNKS_2: "(OPTIONAL) Chunks of the 2nd reads to map, already split, in the same order as READ_CHUNKS_1. Only used with READ_CHUNKS_1, and only when the reads are paired and not interleaved."
         GBZ_FILE: "Path to .gbz index file"
         DIST_FILE: "Path to .dist index file. Optional if using haplotype sampling."
         MIN_FILE: "Path to .min index file. Optional if using haplotype sampling."
@@ -27,6 +30,7 @@ workflow Giraffe {
         OUTPUT_SINGLE_BAM: "Should a single merged BAM file be saved? Default is 'true'."
         OUTPUT_CALLING_BAMS: "Should individual contig BAMs be saved? Default is 'false'."
         OUTPUT_GAF: "Should a GAF file with the aligned reads be saved? Default is 'false'."
+        OUTPUT_GAF_CHUNKS: "Should the unmerged GAF chunks be saved, for a caller that wants to project them itself? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
         READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
@@ -72,6 +76,8 @@ workflow Giraffe {
         File? CRAM_REF
         File? CRAM_REF_INDEX
         File? INPUT_BAM_FILE
+        Array[File]? READ_CHUNKS_1
+        Array[File]? READ_CHUNKS_2
         File GBZ_FILE
         File? DIST_FILE
         File? MIN_FILE
@@ -80,6 +86,7 @@ workflow Giraffe {
         Boolean OUTPUT_SINGLE_BAM = true
         Boolean OUTPUT_CALLING_BAMS = false
         Boolean OUTPUT_GAF = false
+        Boolean OUTPUT_GAF_CHUNKS = false
         Boolean PAIRED_READS = true
         Boolean INTERLEAVED_READS = false
         Int READS_PER_CHUNK = 20000000
@@ -154,32 +161,43 @@ workflow Giraffe {
     }
 
 
-    # Get the reads as FASTQ, whatever container they came in.
-    call reads_wf.PrepareReads {
-        input:
-        INPUT_READ_FILE_1=INPUT_READ_FILE_1,
-        INPUT_READ_FILE_2=INPUT_READ_FILE_2,
-        INPUT_CRAM_FILE=INPUT_CRAM_FILE,
-        CRAM_REF=CRAM_REF,
-        CRAM_REF_INDEX=CRAM_REF_INDEX,
-        INPUT_BAM_FILE=INPUT_BAM_FILE,
-        PAIRED_READS=PAIRED_READS,
-        INTERLEAVED_READS=INTERLEAVED_READS,
-        SPLIT_READ_CORES=SPLIT_READ_CORES,
-        SPLIT_READ_MEM=SPLIT_READ_MEM
+    if (!defined(READ_CHUNKS_1)) {
+        # Get the reads as FASTQ, whatever container they came in, and split them
+        # up for parallel mapping. Haplotype sampling needs to see all of a
+        # sample's reads at once, so we keep the whole FASTQs around too.
+        call reads_wf.SplitReads {
+            input:
+            INPUT_READ_FILE_1=INPUT_READ_FILE_1,
+            INPUT_READ_FILE_2=INPUT_READ_FILE_2,
+            INPUT_CRAM_FILE=INPUT_CRAM_FILE,
+            CRAM_REF=CRAM_REF,
+            CRAM_REF_INDEX=CRAM_REF_INDEX,
+            INPUT_BAM_FILE=INPUT_BAM_FILE,
+            OUTPUT_WHOLE_READS=HAPLOTYPE_SAMPLING,
+            PAIRED_READS=PAIRED_READS,
+            INTERLEAVED_READS=INTERLEAVED_READS,
+            READS_PER_CHUNK=READS_PER_CHUNK,
+            SPLIT_READ_CORES=SPLIT_READ_CORES,
+            SPLIT_READ_MEM=SPLIT_READ_MEM
+        }
     }
-    File read_1_file = PrepareReads.read_1_file
-    # Null unless there is a separate mate file, which hap sampling and the
-    # paired mapping path both need.
-    File? read_2_file = PrepareReads.read_2_file
+
+    Array[File] read_chunks_1 = select_first([READ_CHUNKS_1, SplitReads.read_chunks_1])
+    # Null when the reads are single-ended or interleaved, in which case the
+    # first set of chunks holds everything.
+    Array[File]? read_chunks_2 = if defined(READ_CHUNKS_1) then READ_CHUNKS_2 else SplitReads.read_chunks_2
+    # Whole reads for haplotype sampling. When chunks were handed to us we never
+    # read the reads ourselves, so this is only what the caller passed in.
+    File? whole_read_1_file = if defined(READ_CHUNKS_1) then INPUT_READ_FILE_1 else SplitReads.read_1_file
+    File? whole_read_2_file = if defined(READ_CHUNKS_1) then INPUT_READ_FILE_2 else SplitReads.read_2_file
 
     if (HAPLOTYPE_SAMPLING) {
         call hapl.HaplotypeSampling {
         input:
             GBZ_FILE=GBZ_FILE,
-            INPUT_READ_FILE_FIRST=read_1_file,
+            INPUT_READ_FILE_FIRST=select_first([whole_read_1_file]),
             # If we're not doing paired reads the result here is probably null.
-            INPUT_READ_FILE_SECOND=read_2_file,
+            INPUT_READ_FILE_SECOND=whole_read_2_file,
             HAPL_FILE=HAPL_FILE,
             DIST_FILE=DIST_FILE,
             R_INDEX_FILE=R_INDEX_FILE,
@@ -237,32 +255,79 @@ workflow Giraffe {
     ################################################################
     # Distribute vg mapping operation over each chunked read pair #
     ################################################################
-    call map_wf.MapReads {
-        input:
-        INPUT_READ_FILE_1=read_1_file,
-        INPUT_READ_FILE_2=read_2_file,
-        GBZ_FILE=file_gbz,
-        DIST_FILE=file_dist,
-        MIN_FILE=file_min,
-        ZIPCODES_FILE=file_zipcodes,
-        SAMPLE_NAME=SAMPLE_NAME,
-        OUTPUT_MERGED_GAF=OUTPUT_GAF,
-        PAIRED_READS=PAIRED_READS,
-        INTERLEAVED_READS=INTERLEAVED_READS,
-        READS_PER_CHUNK=READS_PER_CHUNK,
-        GIRAFFE_PRESET=GIRAFFE_PRESET,
-        GIRAFFE_OPTIONS=GIRAFFE_OPTIONS,
-        SPLIT_READ_CORES=SPLIT_READ_CORES,
-        MAP_CORES=MAP_CORES,
-        MAP_MEM=MAP_MEM,
-        VG_DOCKER=select_first([VG_GIRAFFE_DOCKER, VG_DOCKER])
+    if (PAIRED_READS && !INTERLEAVED_READS) {
+        Array[Pair[File,File]] read_pair_chunk_files_list = zip(read_chunks_1, select_first([read_chunks_2]))
+        scatter (read_pair_chunk_files in read_pair_chunk_files_list) {
+            call map.runVGGIRAFFE as runVGGIRAFFE2file {
+                input:
+                fastq_file_1=read_pair_chunk_files.left,
+                fastq_file_2=read_pair_chunk_files.right,
+                in_preset=GIRAFFE_PRESET,
+                in_giraffe_options=GIRAFFE_OPTIONS,
+                in_gbz_file=file_gbz,
+                in_dist_file=file_dist,
+                in_zipcodes_file=file_zipcodes,
+                in_min_file=file_min,
+                # We always need to pass a full dict file here, with lengths,
+                # because if we pass just path lists and the paths are not
+                # completely contained in the graph (like if we're working on
+                # GRCh38 paths in a CHM13-based graph), giraffe won't be able
+                # to get the path lengths and will crash.
+                # TODO: Somehow this problem is supposed to go away if we pull
+                # any GRCh38. prefix off the path names by setting
+                # REFERENCE_PREFIX and making sure the prefix isn't in the
+                # truth set.
+                # See <https://github.com/adamnovak/giraffe-dv-wdl/pull/2#issuecomment-955096920>
+                in_sample_name=SAMPLE_NAME,
+                nb_cores=MAP_CORES,
+                mem_gb=MAP_MEM,
+                vg_docker=select_first([VG_GIRAFFE_DOCKER, VG_DOCKER])
+            }
+        }
+    }
+    # TODO: invent else
+    if (!(PAIRED_READS && !INTERLEAVED_READS)) {
+        scatter (read_pair_chunk_file in read_chunks_1) {
+            call map.runVGGIRAFFE as runVGGIRAFFE1file {
+                input:
+                fastq_file_1=read_pair_chunk_file,
+                in_interleaved=INTERLEAVED_READS,
+                in_preset=GIRAFFE_PRESET,
+                in_giraffe_options=GIRAFFE_OPTIONS,
+                in_gbz_file=file_gbz,
+                in_dist_file=file_dist,
+                in_zipcodes_file=file_zipcodes,
+                in_min_file=file_min,
+                in_sample_name=SAMPLE_NAME,
+                nb_cores=MAP_CORES,
+                mem_gb=MAP_MEM,
+                vg_docker=select_first([VG_GIRAFFE_DOCKER, VG_DOCKER])
+            }
+        }
+    }
+
+    Array[File] gaf_chunks = select_first([runVGGIRAFFE2file.chunk_gaf_file, runVGGIRAFFE1file.chunk_gaf_file])
+
+    if (OUTPUT_GAF) {
+        call gautils.mergeGAF {
+            input:
+            in_sample_name=SAMPLE_NAME,
+            in_gaf_chunk_files=gaf_chunks
+        }
+    }
+
+    if (OUTPUT_GAF_CHUNKS) {
+        # Only hand the chunks back when they are asked for: as an output they
+        # would otherwise be kept, and there are as many of them as there are
+        # chunks of reads.
+        Array[File] wanted_gaf_chunks = gaf_chunks
     }
 
     if (OUTPUT_SINGLE_BAM || OUTPUT_CALLING_BAMS) {
         # We are outputting BAM so surjection is needed
         call surject_wf.Surject {
             input:
-            GAF_CHUNKS=MapReads.gaf_chunks,
+            GAF_CHUNKS=gaf_chunks,
             GBZ_FILE=file_gbz,
             PATH_LIST_FILE=pipeline_path_list_file,
             REFERENCE_DICT_FILE=reference_dict_file,
@@ -366,10 +431,11 @@ workflow Giraffe {
     output {
         File? output_bam = single_bam
         File? output_bam_index = single_bam_index
-        File? output_gaf = MapReads.merged_gaf
+        File? output_gaf = mergeGAF.output_merged_gaf
+        Array[File]? output_gaf_chunks = wanted_gaf_chunks
         Array[File]? output_calling_bams = calling_bams
         Array[File]? output_calling_bam_indexes = calling_bam_indexes
 
-    }   
+    }
 }
 

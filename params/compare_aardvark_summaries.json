@@ -1,6 +1,0 @@
-{
-  "compareAardvarkSummaries.in_left_summary": "tests/small_sim_graph/s0.baseline.summary.tsv",
-  "compareAardvarkSummaries.in_right_summary": "tests/small_sim_graph/s0.candidate.summary.tsv",
-  "compareAardvarkSummaries.in_left_label": "baseline",
-  "compareAardvarkSummaries.in_right_label": "candidate"
-}
