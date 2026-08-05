@@ -30,7 +30,7 @@ workflow Giraffe {
         OUTPUT_SINGLE_BAM: "Should a single merged BAM file be saved? Default is 'true'."
         OUTPUT_CALLING_BAMS: "Should individual contig BAMs be saved? Default is 'false'."
         OUTPUT_GAF: "Should a GAF file with the aligned reads be saved? Default is 'false'."
-        OUTPUT_GAF_CHUNKS: "Should the unmerged GAF chunks be saved, for a caller that wants to project them itself? Default is 'false'."
+        OUTPUT_GAF_CHUNKS: "Should the unmerged GAF chunks be saved? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
         READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
