@@ -482,12 +482,13 @@ workflow AcceptanceTest {
 
     # We abuse conditionals here to create null values for the variables we
     # don't want to output.
+    # These will all also be null if we didn't generate the GAFs.
     if (!share_mapping) {
-        File maybe_baseline_gaf = baselineMapping.output_gaf
-        File maybe_candidate_gaf = candidateMapping.output_gaf
+        File? maybe_baseline_gaf = baselineMapping.output_gaf
+        File? maybe_candidate_gaf = candidateMapping.output_gaf
     }
     if (share_mapping) {
-        File maybe_unified_gaf = baselineMapping.output_gaf
+        File? maybe_unified_gaf = baselineMapping.output_gaf
     }
 
 
