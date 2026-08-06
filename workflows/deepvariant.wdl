@@ -255,8 +255,18 @@ workflow DeepVariant {
             }
         }
         if (EVALUATE_WITH_AARDVARK) {
-            # Aardvark has to be told where the truth set is complete, so
-            # EVALUATION_REGIONS_BED stops being optional here.
+            
+            # Aardvark takes one mandatory BED to actually run on.
+            # We've decided this means EVALUATION_REGIONS_BED is now mandatory.
+            # But we still need to intersect in RESTRICT_REGIONS_BED if provided.
+            if (defined(RESTRICT_REGIONS_BED)) {
+                call utils.intersectBeds as makeAardvarkBed {
+                    input:
+                        in_bed_1 = select_first([EVALUATION_REGIONS_BED]),
+                        in_bed_2 = select_first([RESTRICT_REGIONS_BED])
+                }
+            }
+
             call aardvark.AardvarkEvaluation {
                 input:
                     QUERY_VCF=concatClippedVCFChunks.output_merged_vcf,
@@ -265,7 +275,7 @@ workflow DeepVariant {
                     TRUTH_VCF_INDEX=TRUTH_VCF_INDEX,
                     REFERENCE_FILE=reference_file,
                     REFERENCE_INDEX_FILE=reference_index_file,
-                    REGIONS_BED=select_first([EVALUATION_REGIONS_BED]),
+                    REGIONS_BED=select_first([makeAardvarkBed.output_bed_file, EVALUATION_REGIONS_BED]),
                     STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
                     SAMPLE_NAME=SAMPLE_NAME,
                     THREADS=EVAL_CORES,

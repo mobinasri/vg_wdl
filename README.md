@@ -512,8 +512,9 @@ Parameters:
 - *SAMPLE_NAME*: The sample name
 - *TRUTH_VCF*: Path to .vcf.gz of truth calls to evaluate both runs against
 - *TRUTH_VCF_INDEX*: (OPTIONAL) Tabix index for TRUTH_VCF. Made if not provided.
-- *EVALUATION_REGIONS_BED*: BED of regions to evaluate in. Required, because Aardvark needs to be told where the truth set is complete.
+- *EVALUATION_REGIONS_BED*: BED of regions to evaluate in
 - *STRATIFICATION_ARCHIVE*: (OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the Aardvark results down by
+- *RESTRICT_REGIONS_BED*: (OPTIONAL) Additional BED to restrict comparison against TRUTH_VCF to
 - *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved for each run? When both runs map the same way there is only one set of alignments, so both outputs are the same file. Default is 'false'.
 - *OUTPUT_BAM*: Should the merged BAM be saved for each run? Default is 'false'.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
