@@ -563,8 +563,8 @@ Parameters:
 - *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.
 - *MAKE_EXAMPLES_CORES*: Number of cores to use when making DeepVariant examples. Default is CALL_CORES.
 - *MAKE_EXAMPLES_MEM*: Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM.
-- *AARDVARK_CORES*: Number of cores to use when running Aardvark. Default is 16.
-- *AARDVARK_MEM*: Memory, in GB, to use when running Aardvark. Default is 30.
+- *EVAL_CORES*: Number of cores to use when evaluating variant calls. Default is 16.
+- *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 30.
 
 Related
 topics: [read realignment](#Read-realignment), [reference prefix removal](#Reference-prefix-removal), [CRAM input](#CRAM-input), [reads chunking](#Reads-chunking), [path list](#Path-list), [single-end reads](#Single-end-reads), [interleaved reads](#Interleaved-reads), [HPRC pangenomes](#HPRC-pangenomes).

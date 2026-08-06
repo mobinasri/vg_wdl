@@ -92,8 +92,8 @@ workflow AcceptanceTest {
         CALL_MEM: "Memory, in GB, to use when calling variants. Default is 50."
         MAKE_EXAMPLES_CORES: "Number of cores to use when making DeepVariant examples. Default is CALL_CORES."
         MAKE_EXAMPLES_MEM: "Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM."
-        AARDVARK_CORES: "Number of cores to use when running Aardvark. Default is 16."
-        AARDVARK_MEM: "Memory, in GB, to use when running Aardvark. Default is 30."
+        EVAL_CORES: "Number of cores to use when evaluating variant calls. Default is 16."
+        EVAL_MEM: "Memory, in GB, to use when evaluating variant calls. Default is 30."
     }
 
     input {
@@ -175,8 +175,8 @@ workflow AcceptanceTest {
         Int CALL_MEM = 50
         Int MAKE_EXAMPLES_CORES = CALL_CORES
         Int MAKE_EXAMPLES_MEM = CALL_MEM
-        Int AARDVARK_CORES = 16
-        Int AARDVARK_MEM = 30
+        Int EVAL_CORES = 16
+        Int EVAL_MEM = 30
     }
 
     # Which container each vg stage uses. A stage that gets the same container on
@@ -422,8 +422,8 @@ workflow AcceptanceTest {
         CALL_MEM=CALL_MEM,
         MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
         MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
-        EVAL_CORES=AARDVARK_CORES,
-        EVAL_MEM=AARDVARK_MEM,
+        EVAL_CORES=EVAL_CORES,
+        EVAL_MEM=EVAL_MEM,
         VG_DOCKER=BASELINE_VG_DOCKER,
         VG_SURJECT_DOCKER=baseline_surject_docker
     }
@@ -477,8 +477,8 @@ workflow AcceptanceTest {
         CALL_MEM=CALL_MEM,
         MAKE_EXAMPLES_CORES=MAKE_EXAMPLES_CORES,
         MAKE_EXAMPLES_MEM=MAKE_EXAMPLES_MEM,
-        EVAL_CORES=AARDVARK_CORES,
-        EVAL_MEM=AARDVARK_MEM,
+        EVAL_CORES=EVAL_CORES,
+        EVAL_MEM=EVAL_MEM,
         VG_DOCKER=CANDIDATE_VG_DOCKER,
         VG_SURJECT_DOCKER=candidate_surject_docker
     }
