@@ -181,6 +181,8 @@ workflow GiraffeDeepVariantFromGAF {
         OUTPUT_UNMAPPED_BAM=OUTPUT_UNMAPPED_BAM,
         PATH_LIST_FILE=PrepareReference.path_list_file,
         REFERENCE_PREFIX=REFERENCE_PREFIX,
+        # We surjected to a BAM without the prefix.
+        REFERENCE_PREFIX_ON_BAM=false,
         REFERENCE_FILE=PrepareReference.reference_file,
         REFERENCE_INDEX_FILE=PrepareReference.reference_index_file,
         REFERENCE_DICT_FILE=PrepareReference.reference_dict_file,

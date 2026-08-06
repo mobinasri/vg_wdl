@@ -65,60 +65,60 @@ The full workflow to go from sequencing reads (FASTQs, CRAM) to small variant ca
 
 Parameters:
 
-- *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz  
-- *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz  
-- *INPUT_CRAM_FILE*: Input CRAM file  
-- *CRAM_REF*: Genome fasta file associated with the CRAM file  
-- *CRAM_REF_INDEX*: Index of the fasta file associated with the CRAM file  
-- *GBZ_FILE*: Path to .gbz index file  
-- *DIST_FILE*: Path to .dist index file  
-- *MIN_FILE*: Path to .min index file  
+- *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz
+- *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz
+- *INPUT_CRAM_FILE*: Input CRAM file
+- *CRAM_REF*: Genome fasta file associated with the CRAM file
+- *CRAM_REF_INDEX*: Index of the fasta file associated with the CRAM file
+- *GBZ_FILE*: Path to .gbz index file
+- *DIST_FILE*: Path to .dist index file
+- *MIN_FILE*: Path to .min index file
 - *ZIPCODES_FILE*: (OPTIONAL) For chaining-based alignment, path to .zipcodes index file
 - *HAPL_FILE*: (OPTIONAL) Path to .hapl file used in haplotype sampling
-- *SAMPLE_NAME*: The sample name  
-- *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved? Default is 'true'.  
-- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.  
-- *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.  
+- *SAMPLE_NAME*: The sample name
+- *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved? Default is 'true'.
+- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.
+- *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.
 - *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
 - *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
-- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 million.  
-- *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index.  
-- *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.  
-- *REFERENCE_PREFIX*: Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)  
-- *REFERENCE_FILE*: (OPTIONAL) If specified, use this FASTA reference instead of extracting it from the graph. Required if the graph does not contain all bases of the reference.  
-- *REFERENCE_INDEX_FILE*: (OPTIONAL) If specified, use this .fai index instead of indexing the reference file.  
-- *REFERENCE_DICT_FILE*: (OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths.  
-- *HAPLOID_CONTIGS*: (OPTIONAL) Names of contigs in the reference (without REFERENCE_PREFIX) that are haploid in this sample (often chrX and chrY). Not compatible with DeepVariant 1.5.  
-- *PAR_REGIONS_BED_FILE*: (OPTIONAL) BED file with pseudo-autosomal regions. Not compatible with DeepVariant 1.5.  
-- *PRUNE_LOW_COMPLEXITY*: Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'.  
-- *LEFTALIGN_BAM*: Whether or not to left-align reads in the BAM. Default is 'true'.  
-- *REALIGN_INDELS*: Whether or not to realign reads near indels. Default is 'true'.  
-- *REALIGNMENT_EXPANSION_BASES*: Number of bases to expand indel realignment targets by on either side, to free up read tails in slippery regions. Default is 160.  
-- *MIN_MAPQ*: Minimum MAPQ of reads to use for calling. 4 is the lowest at which a mapping is more likely to be right than wrong. Default is the DeepVariant default for the model type.  
-- *MAX_FRAGMENT_LENGTH*: Maximum distance at which to mark paired reads properly paired. Default is 3000.  
-- *GIRAFFE_PRESET*: (OPTIONAL) Name of Giraffe mapper parameter preset to use (default, fast, hifi, or r10)  
-- *GIRAFFE_OPTIONS*: (OPTIONAL) Extra command line options for Giraffe mapper  
-- *TRUTH_VCF*: Path to .vcf.gz to compare against  
-- *TRUTH_VCF_INDEX*: Path to Tabix index for TRUTH_VCF  
-- *EVALUATION_REGIONS_BED*: BED to evaluate against TRUTH_VCF on, where false positives will be counted. Required when EVALUATE_WITH_AARDVARK is set.  
+- *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 million.
+- *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index.
+- *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.
+- *REFERENCE_PREFIX*: Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)
+- *REFERENCE_FILE*: (OPTIONAL) If specified, use this FASTA reference instead of extracting it from the graph. Required if the graph does not contain all bases of the reference.
+- *REFERENCE_INDEX_FILE*: (OPTIONAL) If specified, use this .fai index instead of indexing the reference file.
+- *REFERENCE_DICT_FILE*: (OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths.
+- *HAPLOID_CONTIGS*: (OPTIONAL) Names of contigs in the reference (without REFERENCE_PREFIX) that are haploid in this sample (often chrX and chrY). Not compatible with DeepVariant 1.5.
+- *PAR_REGIONS_BED_FILE*: (OPTIONAL) BED file with pseudo-autosomal regions. Not compatible with DeepVariant 1.5.
+- *PRUNE_LOW_COMPLEXITY*: Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'.
+- *LEFTALIGN_BAM*: Whether or not to left-align reads in the BAM. Default is 'true'.
+- *REALIGN_INDELS*: Whether or not to realign reads near indels. Default is 'true'.
+- *REALIGNMENT_EXPANSION_BASES*: Number of bases to expand indel realignment targets by on either side, to free up read tails in slippery regions. Default is 160.
+- *MIN_MAPQ*: Minimum MAPQ of reads to use for calling. 4 is the lowest at which a mapping is more likely to be right than wrong. Default is the DeepVariant default for the model type.
+- *MAX_FRAGMENT_LENGTH*: Maximum distance at which to mark paired reads properly paired. Default is 3000.
+- *GIRAFFE_PRESET*: (OPTIONAL) Name of Giraffe mapper parameter preset to use (default, fast, hifi, or r10)
+- *GIRAFFE_OPTIONS*: (OPTIONAL) Extra command line options for Giraffe mapper
+- *TRUTH_VCF*: Path to .vcf.gz to compare against
+- *TRUTH_VCF_INDEX*: Path to Tabix index for TRUTH_VCF
+- *EVALUATION_REGIONS_BED*: BED to evaluate against TRUTH_VCF on, where false positives will be counted. Required when EVALUATE_WITH_AARDVARK is set.
 - *EVALUATE_WITH_AARDVARK*: Should the calls be compared to TRUTH_VCF with Aardvark instead of hap.py? Default is 'false'.
 - *STRATIFICATION_ARCHIVE*: (OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the results down by. Only used when EVALUATE_WITH_AARDVARK is set.
-- *RESTRICT_REGIONS_BED*: BED to restrict comparison against TRUTH_VCF to  
-- *TARGET_REGION*: Contig or region to restrict evaluation to  
-- *RUN_STANDALONE_VCFEVAL*: Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)  
-- *DV_MODEL_TYPE*: Type of DeepVariant model to use. Can be WGS (default), WES, PACBIO, ONT_R104, or HYBRID_PACBIO_ILLUMINA.  
-- *DV_MODEL_META*: .meta file for a custom DeepVariant calling model  
-- *DV_MODEL_INDEX*: .index file for a custom DeepVariant calling model  
-- *DV_MODEL_DATA*: .data-00000-of-00001 file for a custom DeepVariant calling model  
-- *DV_MODEL_FILES*: Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format  
-- *DV_MODEL_VARIABLES_FILES*: Array of files that need to go in a 'variables' subdirectory for a DV model  
+- *RESTRICT_REGIONS_BED*: BED to restrict comparison against TRUTH_VCF to
+- *TARGET_REGION*: Contig or region to restrict evaluation to
+- *RUN_STANDALONE_VCFEVAL*: Whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)
+- *DV_MODEL_TYPE*: Type of DeepVariant model to use. Can be WGS (default), WES, PACBIO, ONT_R104, or HYBRID_PACBIO_ILLUMINA.
+- *DV_MODEL_META*: .meta file for a custom DeepVariant calling model
+- *DV_MODEL_INDEX*: .index file for a custom DeepVariant calling model
+- *DV_MODEL_DATA*: .data-00000-of-00001 file for a custom DeepVariant calling model
+- *DV_MODEL_FILES*: Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format
+- *DV_MODEL_VARIABLES_FILES*: Array of files that need to go in a 'variables' subdirectory for a DV model
 - *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? Default is 'true'. Should be 'false' for HiFi.
 - *DV_NORM_READS*: Should DV normalize reads itself? Default is 'false'. Should be 'true' for HiFi.
 - *OTHER_MAKEEXAMPLES_ARG*: Additional arguments for the make_examples step of DeepVariant
 - *DV_USE_GPUS*: Should DeepVariant use GPUs for calling variants? Default is 'true'.
 - *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs
-- *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs  
+- *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs
 - *SPLIT_READ_CORES*: Number of cores to use when splitting the reads into chunks. Default is 8.
 - *SPLIT_READ_MEM*: Memory, in GB, to use when splitting the reads into chunks. Default is 50.
 - *MAP_CORES*: Number of cores to use when mapping the reads. Default is 16.
@@ -130,15 +130,15 @@ Parameters:
 - *HAPLOTYPE_INDEXING_MEM*: Memory, in GB, to use for haplotype sampling indexing tasks (distance index, r-index, haplotype index, sampling, and giraffe distance index). (Default: 120)
 - *BAM_PREPROCESS_MEM*: Memory, in GB, to use when preprocessing BAMs (left-shifting and preparing realignment targets). Default is 20.
 - *REALIGN_MEM*: Memory, in GB, to use for Abra indel realignment. Default is 40 or MAP_MEM, whichever is lower.
-- *CALL_CORES*: Number of cores to use when calling variants. Default is 8.  
-- *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.  
+- *CALL_CORES*: Number of cores to use when calling variants. Default is 8.
+- *CALL_MEM*: Memory, in GB, to use when calling variants. Default is 50.
 - *MAKE_EXAMPLES_CORES*: Number of cores to use when making DeepVariant examples. Default is CALL_CORES.
 - *MAKE_EXAMPLES_MEM*: Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM.
 - *EVAL_CORES*: Number of cores to use when evaluating variant calls. Default is 8.
-- *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 60.  
-- *VG_DOCKER*: Container image to use when running vg  
-- *VG_GIRAFFE_DOCKER*: Alternate container image to use when running vg giraffe mapping  
-- *VG_SURJECT_DOCKER*: Alternate container image to use when running vg surject  
+- *EVAL_MEM*: Memory, in GB, to use when evaluating variant calls. Default is 60.
+- *VG_DOCKER*: Container image to use when running vg
+- *VG_GIRAFFE_DOCKER*: Alternate container image to use when running vg giraffe mapping
+- *VG_SURJECT_DOCKER*: Alternate container image to use when running vg surject
 
 
 Related
@@ -256,7 +256,7 @@ Parameters:
 - *READS_PER_CHUNK*: Number of reads to put in each chunk when splitting INPUT_GAF. Unused if GAF_CHUNKS is given. Default 20 million.
 - *GBZ_FILE*: Path to .gbz index file. Has to be the graph the reads were mapped to, since the alignments name its nodes.
 - *SAMPLE_NAME*: The sample name
-- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? If yes, unmapped reads will be inluded and 'calling
+- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be inluded and 'calling
   bams' (one per contig) won't be outputed. Default is 'true'.
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.
 - *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
@@ -374,7 +374,7 @@ Parameters:
 - *MERGED_BAM_FILE*: The all-contigs sorted BAM to call with.
 - *MERGED_BAM_FILE_INDEX*: The .bai index for the input BAM file
 - *SAMPLE_NAME*: The sample name
-- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.
+- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file of reads sued for calling be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.
 - *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
 - *CONTIGS*: Contig path names to use as PATH_LIST_FILE. Must be set if PATH_LIST_FILE is not.
@@ -470,15 +470,16 @@ To compare two versions of `vg surject` while mapping with the *candidate* vg in
   "AcceptanceTest.BASELINE_VG_DOCKER": "quay.io/vgteam/vg:v1.64.0",
   "AcceptanceTest.CANDIDATE_VG_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
   "AcceptanceTest.BASELINE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE",
-  "AcceptanceTest.CANDIDATE_VG_GIRAFFE_DOCKER": "quay.io/vgteam/vg:CANDIDATE"
 }
 ```
 
-To compare two versions of `vg giraffe` for mapping while surjecting the same way in both runs, set *BASELINE_VG_SURJECT_DOCKER* to match the candidate, or *CANDIDATE_VG_SURJECT_DOCKER* to match the baseline.
+To compare two versions of `vg giraffe` for mapping, while surjecting the same way in both runs, set *BASELINE_VG_SURJECT_DOCKER* to match the candidate, or *CANDIDATE_VG_SURJECT_DOCKER* to match the baseline.
 
-Surjection settings can be compared the same way as vg versions: give the two runs different *BASELINE_VG_SURJECT_OPTIONS* and *CANDIDATE_VG_SURJECT_OPTIONS*.
+Surjection settings can also be compared, using *BASELINE_VG_SURJECT_OPTIONS* and *CANDIDATE_VG_SURJECT_OPTIONS*.
 
-Each run evaluates its own calls against the truth set with Aardvark, so the outputs are the Aardvark summary and full output directory for each run, plus each run's VCF.
+Each run is evaluated against the truth set with Aardvark. The workflow produces the Aardvark summary, the Aardvark full output directory, and the VCF for each condition.
+
+BAM and GAF read alignments can also be requested. If GAF alignments are shared between the two conditions, a unified GAF will be produced. Otherwise, two GAFS will be produced for the baseline and candidate conditions.
 
 - workflow file: [workflows/acceptance_test.wdl](workflows/acceptance_test.wdl)
 
@@ -486,11 +487,11 @@ Parameters:
 
 - *BASELINE_VG_DOCKER*: Container image to use when running vg for the baseline run, which is the known-good version to compare against
 - *CANDIDATE_VG_DOCKER*: Container image to use when running vg for the candidate run, which is the version under test
-- *BASELINE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run, instead of BASELINE_VG_DOCKER
+- *BASELINE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run, instead of BASELINE_VG_DOCKER. If the same as the candidate Giraffe docker, mapping only runs once.
 - *BASELINE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the baseline run, instead of BASELINE_VG_DOCKER
-- *CANDIDATE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run, instead of CANDIDATE_VG_DOCKER. Set this and BASELINE_VG_GIRAFFE_DOCKER to the same image to map once and compare only what happens after mapping.
+- *CANDIDATE_VG_GIRAFFE_DOCKER*: (OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run, instead of CANDIDATE_VG_DOCKER. If the same as the baseline Giraffe docker, mapping only runs once.
 - *CANDIDATE_VG_SURJECT_DOCKER*: (OPTIONAL) Container image to use when running vg surject in the candidate run, instead of CANDIDATE_VG_DOCKER
-- *BASELINE_VG_SURJECT_OPTIONS*: (OPTIONAL) Extra command line options for vg surject in the baseline run. Set this and CANDIDATE_VG_SURJECT_OPTIONS differently to compare surjection settings rather than, or as well as, vg versions.
+- *BASELINE_VG_SURJECT_OPTIONS*: (OPTIONAL) Extra command line options for vg surject in the baseline run
 - *CANDIDATE_VG_SURJECT_OPTIONS*: (OPTIONAL) Extra command line options for vg surject in the candidate run
 - *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz
 - *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz
@@ -926,7 +927,7 @@ If you use the Giraffe-DeepVariant workflows, please cite
 the [HPRC preprint](https://www.biorxiv.org/content/10.1101/2022.07.09.499321v1):
 
 ```
-Liao, Asri, Ebler, et al. A Draft Human Pangenome Reference. preprint, bioRxiv 2022; doi: https://doi.org/10.1101/2022.07.09.499321 
+Liao, Asri, Ebler, et al. A Draft Human Pangenome Reference. preprint, bioRxiv 2022; doi: https://doi.org/10.1101/2022.07.09.499321
 ```
 
 ### Cite Giraffe-SV

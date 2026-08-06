@@ -16,11 +16,11 @@ workflow AcceptanceTest {
     parameter_meta {
         BASELINE_VG_DOCKER: "Container image to use when running vg for the baseline run, which is the known-good version to compare against"
         CANDIDATE_VG_DOCKER: "Container image to use when running vg for the candidate run, which is the version under test"
-        BASELINE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run, instead of BASELINE_VG_DOCKER"
+        BASELINE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the baseline run, instead of BASELINE_VG_DOCKER. If the same as the candidate Giraffe docker, mapping only runs once."
         BASELINE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the baseline run, instead of BASELINE_VG_DOCKER"
-        CANDIDATE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run, instead of CANDIDATE_VG_DOCKER. Set this and BASELINE_VG_GIRAFFE_DOCKER to the same image to map once and compare only what happens after mapping."
+        CANDIDATE_VG_GIRAFFE_DOCKER: "(OPTIONAL) Container image to use when running vg giraffe mapping in the candidate run, instead of CANDIDATE_VG_DOCKER. If the same as the baseline Giraffe docker, mapping only runs once."
         CANDIDATE_VG_SURJECT_DOCKER: "(OPTIONAL) Container image to use when running vg surject in the candidate run, instead of CANDIDATE_VG_DOCKER"
-        BASELINE_VG_SURJECT_OPTIONS: "(OPTIONAL) Extra command line options for vg surject in the baseline run. Set this and CANDIDATE_VG_SURJECT_OPTIONS differently to compare surjection settings rather than, or as well as, vg versions."
+        BASELINE_VG_SURJECT_OPTIONS: "(OPTIONAL) Extra command line options for vg surject in the baseline run"
         CANDIDATE_VG_SURJECT_OPTIONS: "(OPTIONAL) Extra command line options for vg surject in the candidate run"
         INPUT_READ_FILE_1: "Input sample 1st read pair fastq.gz"
         INPUT_READ_FILE_2: "Input sample 2nd read pair fastq.gz"
@@ -480,6 +480,17 @@ workflow AcceptanceTest {
         VG_SURJECT_DOCKER=candidate_surject_docker
     }
 
+    # We abuse conditionals here to create null values for the variables we
+    # don't want to output.
+    if (!share_mapping) {
+        File maybe_baseline_gaf = baselineMapping.output_gaf
+        File maybe_candidate_gaf = candidateMapping.output_gaf
+    }
+    if (share_mapping) {
+        File maybe_unified_gaf = baselineMapping.output_gaf
+    }
+
+
     output {
         # Each side is evaluated inside its own calling run, against the same
         # truth set, so the summaries are already there.
@@ -491,8 +502,13 @@ workflow AcceptanceTest {
         File baseline_vcf_index = baselineCalling.output_vcf_index
         File candidate_vcf = candidateCalling.output_vcf
         File candidate_vcf_index = candidateCalling.output_vcf_index
-        File? baseline_gaf = baselineMapping.output_gaf
-        File? candidate_gaf = if share_mapping then baselineMapping.output_gaf else candidateMapping.output_gaf
+        # If we ran two mapping runs, we want to output baseline and candidate mapped reads.
+        # (If they were requested, they won't be null.)
+        # If we just ran one mapping run, we want to output just one unified set of mapped reads.
+        File? baseline_gaf = maybe_baseline_gaf
+        File? candidate_gaf = maybe_candidate_gaf
+        File? unified_gaf = maybe_unified_gaf
+        # When outputting BAMs, we always output separate BAMs.
         File? baseline_bam = baselineCalling.output_bam
         File? baseline_bam_index = baselineCalling.output_bam_index
         File? candidate_bam = candidateCalling.output_bam
