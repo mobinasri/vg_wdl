@@ -487,7 +487,7 @@ task intersectBeds {
         mkdir output
 
         # Widen the BED regions, but don't escape the chromosomes
-        bedtools intersect -a "~{in_bed_1}" -b "~{in_bed_2}" "output/${BASE_NAME}.intersected.bed"
+        bedtools intersect -a "~{in_bed_1}" -b "~{in_bed_2}" >"output/${BASE_NAME}.intersected.bed"
     >>>
     output {
         File output_bed_file = glob("output/*.intersected.bed")[0]
