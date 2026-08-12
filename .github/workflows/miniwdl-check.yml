@@ -15,16 +15,13 @@ jobs:
   miniwdl-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-
       - name: Install miniwdl
         run: pip install miniwdl==1.11.0
-
       - name: Run miniwdl check on all workflows
         run: |
           set -e

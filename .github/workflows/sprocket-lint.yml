@@ -1,0 +1,35 @@
+name: sprocket lint
+
+on:
+  push:
+    paths:
+      - '**.wdl'
+      - 'sprocket.toml'
+      - '.github/workflows/sprocket-lint.yml'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '**.wdl'
+      - 'sprocket.toml'
+      - '.github/workflows/sprocket-lint.yml'
+
+jobs:
+  sprocket-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up sprocket
+        uses: stjude-rust-labs/setup-sprocket@v1
+        with:
+          version: 0.28.0
+      - name: Run sprocket lint
+        id: lint
+        run: sprocket lint --report-mode one-line workflows tasks tests
+      - name: Explain how to fix
+        if: failure() && steps.lint.outcome == 'failure'
+        run: |
+          cat <<'EOF'
+          sprocket lint failed on a new warning-level finding in code you
+          changed. Fix it, or add a `#@ except: RuleName` directive above the
+          offending item if the finding does not apply.
+          EOF

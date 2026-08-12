@@ -68,7 +68,7 @@ task falseTouchFile {
     }
 
     output {
-        File output = "~{in_file}"
+        File output_file = "~{in_file}"
     }
 }
 
