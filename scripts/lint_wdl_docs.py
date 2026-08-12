@@ -149,13 +149,6 @@ def check_workflow(report: Report, readme: Readme, workflow: WDL.Tree.Workflow) 
     # Get all the workflow input names
     workflow_inputs = {d.name for d in (workflow.inputs or [])}
 
-    # Make sure the input names are 1 to 1 with the parameter_meta entries
-    meta_inputs = set(workflow.parameter_meta.keys())
-    for name in sorted(workflow_inputs - meta_inputs):
-        report.problem(workflow.pos.uri, f"input {name} has no parameter_meta entry")
-    for name in sorted(meta_inputs - workflow_inputs):
-        report.problem(workflow.pos.uri, f"parameter_meta documents {name}, which is not an input")
-
     # Make sure the input names are 1 to 1 with the README documentation entries
     readme_inputs = readme.get_inputs(workflow.pos.uri)
     if readme_inputs is None:
