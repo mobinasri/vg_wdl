@@ -6,7 +6,7 @@ import "../tasks/bioinfo_utils.wdl" as utils
 workflow AardvarkEvaluation {
 
     meta {
-        description: "Evaluate small variants using Aardvark. Follows the same pattern as happy_evaluation.wdl."
+        description: "Evaluate small variants using Aardvark. More information at [https://github.com/vgteam/vg_wdl/tree/master#aardvark-workflow](https://github.com/vgteam/vg_wdl/tree/master#aardvark-workflow)."
     }
 
     parameter_meta {

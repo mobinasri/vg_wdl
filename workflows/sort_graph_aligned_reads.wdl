@@ -6,7 +6,7 @@ workflow sortGraphAlignedReads {
     meta {
 	    author: "Jean Monlong"
         email: "jmonlong@ucsc.edu"
-        description: "Convert a GAF file make a sorted/indexed GAM. More information at [https://github.com/vgteam/vg_wdl/tree/gbz#gaf-to-sorted-gam-workflow](https://github.com/vgteam/vg_wdl/tree/gbz#gaf-to-sorted-gam-workflow)."
+        description: "Convert a GAF file make a sorted/indexed GAM. More information at [https://github.com/vgteam/vg_wdl/tree/master#gaf-to-sorted-gam-workflow](https://github.com/vgteam/vg_wdl/tree/master#gaf-to-sorted-gam-workflow)."
     }
 
     parameter_meta {

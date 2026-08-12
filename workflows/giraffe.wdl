@@ -5,10 +5,13 @@ import "../tasks/bioinfo_utils.wdl" as utils
 import "../tasks/gam_gaf_utils.wdl" as gautils
 import "../tasks/vg_map_hts.wdl" as map
 import "./haplotype_sampling.wdl" as hapl
+import "./internal/prepare_reference.wdl" as reference_wf
+import "./internal/split_reads.wdl" as reads_wf
+import "./internal/surject.wdl" as surject_wf
 
 workflow Giraffe {
     meta {
-        description: "## Giraffe workflow \n Core VG Giraffe mapping, usable for DeepVariant. Reads are mapped to a pangenome with vg giraffe and pre-processed (e.g. indel realignment). More information at [https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-workflow](https://github.com/vgteam/vg_wdl/tree/gbz#giraffe-workflow)."
+        description: "## Giraffe workflow \n Core VG Giraffe mapping, usable for DeepVariant. Reads are mapped to a pangenome with vg giraffe and pre-processed (e.g. indel realignment). More information at [https://github.com/vgteam/vg_wdl/tree/master#giraffe-workflow](https://github.com/vgteam/vg_wdl/tree/master#giraffe-workflow)."
     }
     parameter_meta {
         INPUT_READ_FILE_1: "Input sample 1st read pair fastq.gz or fastq"
@@ -17,6 +20,8 @@ workflow Giraffe {
         CRAM_REF: "Genome fasta file associated with the CRAM file"
         CRAM_REF_INDEX: "Index of the fasta file associated with the CRAM file"
         INPUT_BAM_FILE: "Input BAM file to realign"
+        READ_CHUNKS_1: "(OPTIONAL) Input reads to map (either all reads or read 1), already split. When used, INPUT_READ_FILE_1 is still used for haplotype sampling."
+        READ_CHUNKS_2: "(OPTIONAL) Input reads to map (read 2), in the same order as READ_CHUNKS_1. Only used with READ_CHUNKS_1, when the reads are paired and not interleaved."
         GBZ_FILE: "Path to .gbz index file"
         DIST_FILE: "Path to .dist index file. Optional if using haplotype sampling."
         MIN_FILE: "Path to .min index file. Optional if using haplotype sampling."
@@ -25,16 +30,17 @@ workflow Giraffe {
         OUTPUT_SINGLE_BAM: "Should a single merged BAM file be saved? Default is 'true'."
         OUTPUT_CALLING_BAMS: "Should individual contig BAMs be saved? Default is 'false'."
         OUTPUT_GAF: "Should a GAF file with the aligned reads be saved? Default is 'false'."
+        OUTPUT_GAF_CHUNKS: "Should the unmerged GAF chunks be saved? Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
-        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 000 000."
+        READS_PER_CHUNK: "Number of reads contained in each mapping chunk. Default 20 million."
         PATH_LIST_FILE: "(OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths. If using REFERENCE_PREFIX, contig names in here should have the prefix."
         CONTIGS: "(OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index. If using REFERENCE_PREFIX, contig names in here should have the prefix."
         REFERENCE_PREFIX: "Remove this off the beginning of path names in surjected BAM (set to match prefix in PATH_LIST_FILE)"
         REFERENCE_FILE: "(OPTIONAL) If specified, use this FASTA reference instead of extracting it from the graph. Required if the graph does not contain all bases of the reference. If using REFERENCE_PREFIX, contig names in here should not have the prefix."
         REFERENCE_INDEX_FILE: "(OPTIONAL) If specified, use this .fai index instead of indexing the reference file. If using REFERENCE_PREFIX, contig names in here should not have the prefix."
         REFERENCE_DICT_FILE: "(OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths. Required if REFERENCE_INDEX_FILE is set. If using REFERENCE_PREFIX, contig names in here should not have the prefix. This is used in BAM processing and not for choosing contigs for the surjection, which uses PATH_LIST_FILE."
-        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'."  
+        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'."  
         LEFTALIGN_BAM: "Whether or not to left-align reads in the BAM. Default is 'true'."
         REALIGN_INDELS: "Whether or not to realign reads near indels. Default is 'true'."
         REALIGNMENT_EXPANSION_BASES: "Number of bases to expand indel realignment targets by on either side, to free up read tails in slippery regions. Default is 160."
@@ -70,6 +76,8 @@ workflow Giraffe {
         File? CRAM_REF
         File? CRAM_REF_INDEX
         File? INPUT_BAM_FILE
+        Array[File]? READ_CHUNKS_1
+        Array[File]? READ_CHUNKS_2
         File GBZ_FILE
         File? DIST_FILE
         File? MIN_FILE
@@ -78,6 +86,7 @@ workflow Giraffe {
         Boolean OUTPUT_SINGLE_BAM = true
         Boolean OUTPUT_CALLING_BAMS = false
         Boolean OUTPUT_GAF = false
+        Boolean OUTPUT_GAF_CHUNKS = false
         Boolean PAIRED_READS = true
         Boolean INTERLEAVED_READS = false
         Int READS_PER_CHUNK = 20000000
@@ -152,41 +161,42 @@ workflow Giraffe {
     }
 
 
-    if(defined(INPUT_CRAM_FILE) && defined(CRAM_REF) && defined(CRAM_REF_INDEX)) {
-	    call utils.convertCRAMtoFASTQ {
+    if (!defined(READ_CHUNKS_1)) {
+        # Get the reads as FASTQ, whatever container they came in, and split them
+        # up for parallel mapping.
+        call reads_wf.SplitReads {
             input:
-            in_cram_file=INPUT_CRAM_FILE,
-            in_ref_file=CRAM_REF,
-            in_ref_index_file=CRAM_REF_INDEX,
-            in_paired_reads=PAIRED_READS,
-            in_cores=SPLIT_READ_CORES,
-            in_memory=SPLIT_READ_MEM
-	    }
+            INPUT_READ_FILE_1=INPUT_READ_FILE_1,
+            INPUT_READ_FILE_2=INPUT_READ_FILE_2,
+            INPUT_CRAM_FILE=INPUT_CRAM_FILE,
+            CRAM_REF=CRAM_REF,
+            CRAM_REF_INDEX=CRAM_REF_INDEX,
+            INPUT_BAM_FILE=INPUT_BAM_FILE,
+            # Haplotype sampling needs to see all of a sample's reads at once,
+            # so keep the whole FASTQs when we are going to sample.
+            OUTPUT_WHOLE_READS=HAPLOTYPE_SAMPLING,
+            PAIRED_READS=PAIRED_READS,
+            INTERLEAVED_READS=INTERLEAVED_READS,
+            READS_PER_CHUNK=READS_PER_CHUNK,
+            SPLIT_READ_CORES=SPLIT_READ_CORES,
+            SPLIT_READ_MEM=SPLIT_READ_MEM
+        }
     }
 
-    if(defined(INPUT_BAM_FILE)) {
-	    call utils.convertBAMtoFASTQ {
-            input:
-            in_bam_file=INPUT_BAM_FILE,
-            in_paired_reads=PAIRED_READS,
-            in_cores=SPLIT_READ_CORES,
-            in_memory=SPLIT_READ_MEM
-	    }
-    }
-
-    File read_1_file = select_first([INPUT_READ_FILE_1, convertCRAMtoFASTQ.output_fastq_1_file, convertBAMtoFASTQ.output_fastq_1_file])
-    if(PAIRED_READS && !INTERLEAVED_READS){
-        # We also need the second read in the pair, if paired, for hap sampling.
-        File read_2_file = select_first([INPUT_READ_FILE_2, convertCRAMtoFASTQ.output_fastq_2_file, convertBAMtoFASTQ.output_fastq_2_file])
-    }
+    Array[File] read_chunks_1 = select_first([READ_CHUNKS_1, SplitReads.read_chunks_1])
+    # Null when the reads are single-ended or interleaved, in which case the
+    # first set of chunks holds everything.
+    Array[File]? read_chunks_2 = if defined(READ_CHUNKS_1) then READ_CHUNKS_2 else SplitReads.read_chunks_2
+    # Whole reads for haplotype sampling, if available
+    File? whole_read_1_file = if defined(SplitReads.read_1_file) then SplitReads.read_1_file else INPUT_READ_FILE_1
+    File? whole_read_2_file = if defined(SplitReads.read_2_file) then SplitReads.read_2_file else INPUT_READ_FILE_2 
 
     if (HAPLOTYPE_SAMPLING) {
         call hapl.HaplotypeSampling {
         input:
             GBZ_FILE=GBZ_FILE,
-            INPUT_READ_FILE_FIRST=read_1_file,
-            # If we're not doing paired reads the result here is probably null.
-            INPUT_READ_FILE_SECOND=if PAIRED_READS && !INTERLEAVED_READS then read_2_file else INPUT_READ_FILE_2,
+            INPUT_READ_FILE_FIRST=select_first([whole_read_1_file]),
+            INPUT_READ_FILE_SECOND=whole_read_2_file,
             HAPL_FILE=HAPL_FILE,
             DIST_FILE=DIST_FILE,
             R_INDEX_FILE=R_INDEX_FILE,
@@ -221,78 +231,31 @@ workflow Giraffe {
     File file_dist = select_first([HaplotypeSampling.sampled_dist, DIST_FILE])
 
 
-    # Split input reads into chunks for parallelized mapping
-    call utils.splitReads as firstReadPair {
+    # Which path names to work on, and what reference to surject against? These
+    # come from the graph we are actually mapping to, which is the sampled one
+    # if we sampled.
+    call reference_wf.PrepareReference {
         input:
-            in_read_file=read_1_file,
-            in_pair_id="1",
-            in_reads_per_chunk=READS_PER_CHUNK,
-            in_split_read_cores=SPLIT_READ_CORES
+        GBZ_FILE=file_gbz,
+        CONTIGS=CONTIGS,
+        PATH_LIST_FILE=PATH_LIST_FILE,
+        REFERENCE_PREFIX=REFERENCE_PREFIX,
+        REFERENCE_FILE=REFERENCE_FILE,
+        REFERENCE_INDEX_FILE=REFERENCE_INDEX_FILE,
+        REFERENCE_DICT_FILE=REFERENCE_DICT_FILE,
+        EXTRACT_MEM=MAP_MEM,
+        VG_DOCKER=VG_DOCKER
     }
-    
-    # Which path names to work on?
-    if (!defined(CONTIGS)) {
-        if (!defined(PATH_LIST_FILE)) {
-            # Extract path names to call against from GBZ file if PATH_LIST_FILE input not provided
-            # Filter down to major paths, because GRCh38 includes thousands of
-            # decoys and unplaced/unlocalized contigs, and we can't efficiently
-            # scatter across them, nor do we care about accuracy on them, and also
-            # calling on the decoys is semantically meaningless.
-            call map.extractSubsetPathNames {
-                input:
-                    in_gbz_file=file_gbz,
-                    in_reference_prefix=REFERENCE_PREFIX,
-                    in_extract_mem=MAP_MEM,
-                    vg_docker=VG_DOCKER
-            }
-            
-            if (REFERENCE_PREFIX != "") {
-                call validation.checkPathList as checkExtractedPathList {
-                    input:
-                        in_path_list_file=extractSubsetPathNames.output_path_list_file,
-                        in_reference_prefix=REFERENCE_PREFIX
-                }
-            }
-        }
-    } 
-    File pipeline_path_list_file = select_first([PATH_LIST_FILE, extractSubsetPathNames.output_path_list_file, written_path_names_file])
+    File pipeline_path_list_file = PrepareReference.path_list_file
+    File reference_file = PrepareReference.reference_file
+    File reference_index_file = PrepareReference.reference_index_file
+    File reference_dict_file = PrepareReference.reference_dict_file
 
-    # To make sure that we have a FASTA reference with a contig set that
-    # exactly matches the graph (except for removing the name prefix), we
-    # generate it ourselves, from the graph.
-    if (!defined(REFERENCE_FILE)) {
-        call map.extractReference {
-            input:
-            in_gbz_file=file_gbz,
-            in_path_list_file=pipeline_path_list_file,
-            in_prefix_to_strip=REFERENCE_PREFIX,
-            in_extract_mem=MAP_MEM,
-            vg_docker=VG_DOCKER
-        }
-    }
-    File reference_file = select_first([REFERENCE_FILE, extractReference.reference_file])
-    
-    if (!defined(REFERENCE_INDEX_FILE)) {
-        call utils.indexReference {
-            input:
-                in_reference_file=reference_file
-        }
-    }
-    File reference_index_file = select_first([REFERENCE_INDEX_FILE, indexReference.reference_index_file])
-    File reference_dict_file = select_first([REFERENCE_DICT_FILE, indexReference.reference_dict_file])
-    
     ################################################################
     # Distribute vg mapping operation over each chunked read pair #
     ################################################################
-    if(PAIRED_READS && !INTERLEAVED_READS){
-        call utils.splitReads as secondReadPair {
-            input:
-            in_read_file=select_first([read_2_file]),
-            in_pair_id="2",
-            in_reads_per_chunk=READS_PER_CHUNK,
-            in_split_read_cores=SPLIT_READ_CORES
-        }
-        Array[Pair[File,File]] read_pair_chunk_files_list = zip(firstReadPair.output_read_chunks, secondReadPair.output_read_chunks)
+    if (PAIRED_READS && !INTERLEAVED_READS) {
+        Array[Pair[File,File]] read_pair_chunk_files_list = zip(read_chunks_1, select_first([read_chunks_2]))
         scatter (read_pair_chunk_files in read_pair_chunk_files_list) {
             call map.runVGGIRAFFE as runVGGIRAFFE2file {
                 input:
@@ -323,7 +286,7 @@ workflow Giraffe {
     }
     # TODO: invent else
     if (!(PAIRED_READS && !INTERLEAVED_READS)) {
-        scatter (read_pair_chunk_file in firstReadPair.output_read_chunks) {
+        scatter (read_pair_chunk_file in read_chunks_1) {
             call map.runVGGIRAFFE as runVGGIRAFFE1file {
                 input:
                 fastq_file_1=read_pair_chunk_file,
@@ -334,16 +297,6 @@ workflow Giraffe {
                 in_dist_file=file_dist,
                 in_zipcodes_file=file_zipcodes,
                 in_min_file=file_min,
-                # We always need to pass a full dict file here, with lengths,
-                # because if we pass just path lists and the paths are not
-                # completely contained in the graph (like if we're working on
-                # GRCh38 paths in a CHM13-based graph), giraffe won't be able
-                # to get the path lengths and will crash.
-                # TODO: Somehow this problem is supposed to go away if we pull
-                # any GRCh38. prefix off the path names by setting
-                # REFERENCE_PREFIX and making sure the prefix isn't in the
-                # truth set.
-                # See <https://github.com/adamnovak/giraffe-dv-wdl/pull/2#issuecomment-955096920>
                 in_sample_name=SAMPLE_NAME,
                 nb_cores=MAP_CORES,
                 mem_gb=MAP_MEM,
@@ -353,42 +306,39 @@ workflow Giraffe {
     }
 
     Array[File] gaf_chunks = select_first([runVGGIRAFFE2file.chunk_gaf_file, runVGGIRAFFE1file.chunk_gaf_file])
-    
-    if (OUTPUT_SINGLE_BAM || OUTPUT_CALLING_BAMS) {
-        # We are outputting BAM so surjection is needed
 
-        scatter (gaf_file in gaf_chunks) {
-            call gautils.surjectGAFtoBAM {
-                input:
-                in_gaf_file=gaf_file,
-                in_gbz_file=file_gbz,
-                in_path_list_file=pipeline_path_list_file,
-                in_sample_name=SAMPLE_NAME,
-                in_max_fragment_length=MAX_FRAGMENT_LENGTH,
-                in_paired_reads=PAIRED_READS,
-                in_prune_low_complexity=PRUNE_LOW_COMPLEXITY,
-                nb_cores=MAP_CORES,
-                mem_gb=MAP_MEM,
-                vg_docker=select_first([VG_SURJECT_DOCKER, VG_DOCKER])
-            }
-
-            call utils.sortBAM {
-                input:
-                in_bam_file=surjectGAFtoBAM.output_bam_file,
-                in_ref_dict=reference_dict_file,
-                in_prefix_to_strip=REFERENCE_PREFIX,
-                nb_cores=MAP_CORES,
-                mem_gb=BAM_PREPROCESS_MEM
-            }
-        }
-        
-        # Merge up the unprocessed surjected alignments
-        call utils.mergeAlignmentBAMChunks {
+    if (OUTPUT_GAF) {
+        call gautils.mergeGAF {
             input:
             in_sample_name=SAMPLE_NAME,
-            in_alignment_bam_chunk_files=sortBAM.sorted_bam,
-            in_cores=MAP_CORES,
-            mem_gb=BAM_PREPROCESS_MEM
+            in_gaf_chunk_files=gaf_chunks
+        }
+    }
+
+    if (OUTPUT_GAF_CHUNKS) {
+        # To avoid always saving all the GAF chunks as part of our output,
+        # we make sure this is null unless the caller actually asked for
+        # GAF chunks.
+        Array[File] wanted_gaf_chunks = gaf_chunks
+    }
+
+    if (OUTPUT_SINGLE_BAM || OUTPUT_CALLING_BAMS) {
+        # We are outputting BAM so surjection is needed
+        call surject_wf.Surject {
+            input:
+            GAF_CHUNKS=gaf_chunks,
+            GBZ_FILE=file_gbz,
+            PATH_LIST_FILE=pipeline_path_list_file,
+            REFERENCE_DICT_FILE=reference_dict_file,
+            REFERENCE_PREFIX=REFERENCE_PREFIX,
+            SAMPLE_NAME=SAMPLE_NAME,
+            PAIRED_READS=PAIRED_READS,
+            PRUNE_LOW_COMPLEXITY=PRUNE_LOW_COMPLEXITY,
+            MAX_FRAGMENT_LENGTH=MAX_FRAGMENT_LENGTH,
+            SURJECT_CORES=MAP_CORES,
+            SURJECT_MEM=MAP_MEM,
+            BAM_PREPROCESS_MEM=BAM_PREPROCESS_MEM,
+            VG_DOCKER=select_first([VG_SURJECT_DOCKER, VG_DOCKER])
         }
 
         if (OUTPUT_CALLING_BAMS || LEFTALIGN_BAM || REALIGN_INDELS) {
@@ -399,8 +349,8 @@ workflow Giraffe {
             call utils.splitBAMbyPath {
                 input:
                 in_sample_name=SAMPLE_NAME,
-                in_merged_bam_file=mergeAlignmentBAMChunks.merged_bam_file,
-                in_merged_bam_file_index=mergeAlignmentBAMChunks.merged_bam_file_index,
+                in_merged_bam_file=Surject.bam_file,
+                in_merged_bam_file_index=Surject.bam_index_file,
                 in_path_list_file=pipeline_path_list_file,
                 in_prefix_to_strip=REFERENCE_PREFIX,
                 thread_count=SPLIT_READ_CORES,
@@ -472,26 +422,19 @@ workflow Giraffe {
         if (OUTPUT_SINGLE_BAM) {
             # Find the single BAM and index that we want to output.
             # We want the one after postprocessing if we did any, and the plain merged sorted BAM otherwise.
-            File single_bam = select_first([mergeBAM.merged_bam_file, mergeAlignmentBAMChunks.merged_bam_file])
-            File single_bam_index = select_first([mergeBAM.merged_bam_file_index, mergeAlignmentBAMChunks.merged_bam_file_index])
+            File single_bam = select_first([mergeBAM.merged_bam_file, Surject.bam_file])
+            File single_bam_index = select_first([mergeBAM.merged_bam_file_index, Surject.bam_index_file])
         }
     }
-    
-    if (OUTPUT_GAF){
-        call gautils.mergeGAF {
-            input:
-            in_sample_name=SAMPLE_NAME,
-            in_gaf_chunk_files=gaf_chunks
-        }
-    }
-    
+
     output {
         File? output_bam = single_bam
         File? output_bam_index = single_bam_index
         File? output_gaf = mergeGAF.output_merged_gaf
+        Array[File]? output_gaf_chunks = wanted_gaf_chunks
         Array[File]? output_calling_bams = calling_bams
         Array[File]? output_calling_bam_indexes = calling_bam_indexes
 
-    }   
+    }
 }
 
