@@ -14,7 +14,7 @@ workflow SplitReads {
         CRAM_REF: "(OPTIONAL) Genome fasta file associated with the CRAM file"
         CRAM_REF_INDEX: "(OPTIONAL) Index of the fasta file associated with the CRAM file"
         INPUT_BAM_FILE: "(OPTIONAL) Input BAM file to convert"
-        OUTPUT_WHOLE_READS: "Should the whole, un-split FASTQs be handed back as well as the chunks? Default is 'false'."
+        OUTPUT_WHOLE_READS: "Should the whole, un-split FASTQs be handed back as well as the chunks? Haplotype sampling needs to see all of a sample's reads at once, so a caller that is going to sample wants these. Default is 'false'."
         PAIRED_READS: "Are the reads paired? Default is 'true'."
         INTERLEAVED_READS: "Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'."
         READS_PER_CHUNK: "Number of reads to put in each chunk. Default 20 million."

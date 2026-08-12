@@ -16,7 +16,7 @@ workflow Surject {
         REFERENCE_PREFIX: "Remove this off the beginning of path names in the surjected BAM (set to match prefix in PATH_LIST_FILE)"
         SAMPLE_NAME: "The sample name, which goes in the BAM's read group and sample fields"
         PAIRED_READS: "Are the reads paired? Default is 'true'."
-        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'."
+        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'."
         MAX_FRAGMENT_LENGTH: "Maximum distance at which to mark paired reads properly paired. Default is 3000."
         SURJECT_OPTIONS: "Extra command line options for vg surject."
         SURJECT_CORES: "Number of cores to use when surjecting. Default is 16."

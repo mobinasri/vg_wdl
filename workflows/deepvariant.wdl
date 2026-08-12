@@ -15,7 +15,7 @@ workflow DeepVariant {
         MERGED_BAM_FILE: "The all-contigs sorted BAM to call with."
         MERGED_BAM_FILE_INDEX: "The .bai index for the input BAM file"
         SAMPLE_NAME: "The sample name"
-        OUTPUT_SINGLE_BAM: "Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be inluded and 'calling bams' (one per contig) won't be outputed by default. Default is 'false'."
+        OUTPUT_SINGLE_BAM: "Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'."
         OUTPUT_CALLING_BAMS: "Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM."
         OUTPUT_UNMAPPED_BAM: "Should an unmapped reads BAM be saved? Default is false."
         CONTIGS: "Contig path names to use as PATH_LIST_FILE. Must be set if PATH_LIST_FILE is not."

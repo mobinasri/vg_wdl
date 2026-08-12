@@ -40,7 +40,7 @@ workflow Giraffe {
         REFERENCE_FILE: "(OPTIONAL) If specified, use this FASTA reference instead of extracting it from the graph. Required if the graph does not contain all bases of the reference. If using REFERENCE_PREFIX, contig names in here should not have the prefix."
         REFERENCE_INDEX_FILE: "(OPTIONAL) If specified, use this .fai index instead of indexing the reference file. If using REFERENCE_PREFIX, contig names in here should not have the prefix."
         REFERENCE_DICT_FILE: "(OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths. Required if REFERENCE_INDEX_FILE is set. If using REFERENCE_PREFIX, contig names in here should not have the prefix. This is used in BAM processing and not for choosing contigs for the surjection, which uses PATH_LIST_FILE."
-        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'."  
+        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'."  
         LEFTALIGN_BAM: "Whether or not to left-align reads in the BAM. Default is 'true'."
         REALIGN_INDELS: "Whether or not to realign reads near indels. Default is 'true'."
         REALIGNMENT_EXPANSION_BASES: "Number of bases to expand indel realignment targets by on either side, to free up read tails in slippery regions. Default is 160."
@@ -163,8 +163,7 @@ workflow Giraffe {
 
     if (!defined(READ_CHUNKS_1)) {
         # Get the reads as FASTQ, whatever container they came in, and split them
-        # up for parallel mapping. Haplotype sampling needs to see all of a
-        # sample's reads at once, so we keep the whole FASTQs around too.
+        # up for parallel mapping.
         call reads_wf.SplitReads {
             input:
             INPUT_READ_FILE_1=INPUT_READ_FILE_1,

@@ -113,12 +113,12 @@ Parameters:
 - *DV_MODEL_DATA*: .data-00000-of-00001 file for a custom DeepVariant calling model
 - *DV_MODEL_FILES*: Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format
 - *DV_MODEL_VARIABLES_FILES*: Array of files that need to go in a 'variables' subdirectory for a DV model
-- *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? Default is 'true'. Should be 'false' for HiFi.
-- *DV_NORM_READS*: Should DV normalize reads itself? Default is 'false'. Should be 'true' for HiFi.
+- *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? If unspecified this is not done, unless set in the model. Might want to be on for short reads.
+- *DV_NORM_READS*: Should DV normalize reads itself? If unspecified this is not done, unless set in the model.
 - *OTHER_MAKEEXAMPLES_ARG*: Additional arguments for the make_examples step of DeepVariant
 - *DV_USE_GPUS*: Should DeepVariant use GPUs for calling variants? Default is 'true'.
-- *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs
-- *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs
+- *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs. Must be DeepVariant 1.8+.
+- *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs. Must be DeepVariant 1.8+.
 - *SPLIT_READ_CORES*: Number of cores to use when splitting the reads into chunks. Default is 8.
 - *SPLIT_READ_MEM*: Memory, in GB, to use when splitting the reads into chunks. Default is 50.
 - *MAP_CORES*: Number of cores to use when mapping the reads. Default is 16.
@@ -164,21 +164,20 @@ realignment).
 
 Parameters:
 
-- *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz
-- *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz
-- *INPUT_CRAM_FILE*: Input CRAM file
+- *INPUT_READ_FILE_1*: Input sample 1st read pair fastq.gz or fastq
+- *INPUT_READ_FILE_2*: Input sample 2nd read pair fastq.gz or fastq
+- *INPUT_CRAM_FILE*: Input CRAM file to realign
 - *CRAM_REF*: Genome fasta file associated with the CRAM file
 - *CRAM_REF_INDEX*: Index of the fasta file associated with the CRAM file
 - *INPUT_BAM_FILE*: Input BAM file to realign
-- *READ_CHUNKS_1*: (OPTIONAL) Chunks of the 1st reads to map, already split. Given these, the reads are not read or split here, and INPUT_READ_FILE_1 is only used for haplotype sampling.
-- *READ_CHUNKS_2*: (OPTIONAL) Chunks of the 2nd reads to map, already split, in the same order as READ_CHUNKS_1. Only used with READ_CHUNKS_1, and only when the reads are paired and not interleaved.
+- *READ_CHUNKS_1*: (OPTIONAL) Input reads to map (either all reads or read 1), already split. When used, INPUT_READ_FILE_1 is still used for haplotype sampling.
+- *READ_CHUNKS_2*: (OPTIONAL) Input reads to map (read 2), in the same order as READ_CHUNKS_1. Only used with READ_CHUNKS_1, when the reads are paired and not interleaved.
 - *GBZ_FILE*: Path to .gbz index file
-- *DIST_FILE*: Path to .dist index file
+- *DIST_FILE*: Path to .dist index file. Optional if using haplotype sampling.
 - *MIN_FILE*: Path to .min index file. Optional if using haplotype sampling.
 - *ZIPCODES_FILE*: (OPTIONAL) For chaining-based alignment, path to .zipcodes index file
 - *SAMPLE_NAME*: The sample name
-- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? If yes, unmapped reads will be inluded and 'calling
-  bams' (one per contig) won't be outputed. Default is 'true'.
+- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file be saved? Default is 'true'.
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs be saved? Default is 'false'.
 - *OUTPUT_GAF*: Should a GAF file with the aligned reads be saved? Default is 'false'.
 - *OUTPUT_GAF_CHUNKS*: Should the unmerged GAF chunks be saved? Default is 'false'.
@@ -186,16 +185,21 @@ Parameters:
 - *INTERLEAVED_READS*: Are paired reads interleaved in a single FASTQ? Only meaningful when PAIRED_READS is true and there is a single input FASTQ. Default is 'false'.
 - *READS_PER_CHUNK*: Number of reads contained in each mapping chunk. Default 20 million.
 - *PATH_LIST_FILE*: (OPTIONAL) Text file where each line is a path name in the GBZ index, to use instead of CONTIGS. If
-  neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths.
-- *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index.
+  neither is given, paths are extracted from the GBZ and subset to chromosome-looking paths. If using REFERENCE_PREFIX,
+  contig names in here should have the prefix.
+- *CONTIGS*: (OPTIONAL) Desired reference genome contigs, which are all paths in the GBZ index. If using
+  REFERENCE_PREFIX, contig names in here should have the prefix.
 - *REFERENCE_PREFIX*: Remove this off the beginning of path names in surjected BAM (set to match prefix in
   PATH_LIST_FILE)
 - *REFERENCE_FILE*: (OPTIONAL) If specified, use this FASTA reference instead of extracting it from the graph. Required
-  if the graph does not contain all bases of the reference.
-- *REFERENCE_INDEX_FILE*: (OPTIONAL) If specified, use this .fai index instead of indexing the reference file.
+  if the graph does not contain all bases of the reference. If using REFERENCE_PREFIX, contig names in here should not
+  have the prefix.
+- *REFERENCE_INDEX_FILE*: (OPTIONAL) If specified, use this .fai index instead of indexing the reference file. If using
+  REFERENCE_PREFIX, contig names in here should not have the prefix.
 - *REFERENCE_DICT_FILE*: (OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths. Required if
-  REFERENCE_INDEX_FILE i
-- *PRUNE_LOW_COMPLEXITY*: Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'.
+  REFERENCE_INDEX_FILE is set. If using REFERENCE_PREFIX, contig names in here should not have the prefix. This is used
+  in BAM processing and not for choosing contigs for the surjection, which uses PATH_LIST_FILE.
+- *PRUNE_LOW_COMPLEXITY*: Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'.
 - *LEFTALIGN_BAM*: Whether or not to left-align reads in the BAM. Default is 'true'.
 - *REALIGN_INDELS*: Whether or not to realign reads near indels. Default is 'true'.
 - *REALIGNMENT_EXPANSION_BASES*: Number of bases to expand indel realignment targets by on either side, to free up read
@@ -256,8 +260,8 @@ Parameters:
 - *READS_PER_CHUNK*: Number of reads to put in each chunk when splitting INPUT_GAF. Unused if GAF_CHUNKS is given. Default 20 million.
 - *GBZ_FILE*: Path to .gbz index file. Has to be the graph the reads were mapped to, since the alignments name its nodes.
 - *SAMPLE_NAME*: The sample name
-- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be inluded and 'calling
-  bams' (one per contig) won't be outputed. Default is 'true'.
+- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be included and 'calling
+  bams' (one per contig) won't be outputted. Default is 'true'.
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.
 - *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
 - *PAIRED_READS*: Are the reads paired? Default is 'true'.
@@ -273,7 +277,7 @@ Parameters:
   REFERENCE_INDEX_FILE is set
 - *HAPLOID_CONTIGS*: (OPTIONAL) Names of contigs in the reference (without REFERENCE_PREFIX) that are haploid in this sample (often chrX and chrY). Not compatible with DeepVariant 1.5.
 - *PAR_REGIONS_BED_FILE*: (OPTIONAL) BED file with pseudo-autosomal regions. Not compatible with DeepVariant 1.5.
-- *PRUNE_LOW_COMPLEXITY*: Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'.
+- *PRUNE_LOW_COMPLEXITY*: Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'.
 - *LEFTALIGN_BAM*: Whether or not to left-align reads in the BAM. Default is 'true'.
 - *REALIGN_INDELS*: Whether or not to realign reads near indels. Default is 'true'.
 - *REALIGNMENT_EXPANSION_BASES*: Number of bases to expand indel realignment targets by on either side, to free up read
@@ -296,11 +300,11 @@ Parameters:
 - *DV_MODEL_DATA*: (OPTIONAL) .data-00000-of-00001 file for a custom DeepVariant calling model
 - *DV_MODEL_FILES*: Array of all files in the root directory of the DV model, if not using DV_MODEL_META/DV_MODEL_INDEX/DV_MODEL_DATA format
 - *DV_MODEL_VARIABLES_FILES*: Array of files that need to go in a 'variables' subdirectory for a DV model
-- *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? If unspecified this is done, unless the model is responsible for the setting.
-- *DV_NORM_READS*: Should DV normalize reads itself? If unspecified this is not done, unless the model is responsible for the setting.
+- *DV_KEEP_LEGACY_AC*: Should DV use the legacy allele counter behavior? If unspecified this is not done, unless set in the model. Might want to be on for short reads.
+- *DV_NORM_READS*: Should DV normalize reads itself? If unspecified this is not done, unless set in the model.
 - *DV_USE_GPUS*: Should DeepVariant use GPUs for calling variants? Default is 'true'.
-- *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs
-- *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs
+- *DV_NO_GPU_DOCKER*: Container image to use when running DeepVariant for steps that don't benefit from GPUs. Must be DeepVariant 1.8+.
+- *DV_GPU_DOCKER*: Container image to use when running DeepVariant for steps that benefit from GPUs. Must be DeepVariant 1.8+.
 - *OTHER_MAKEEXAMPLES_ARG*: Additional arguments for the make_examples step of DeepVariant
 - *VG_CORES*: Number of cores to use when projecting the reads. Default is 16.
 - *VG_MEM*: Memory, in GB, to use when projecting the reads. Default is 120.
@@ -374,7 +378,7 @@ Parameters:
 - *MERGED_BAM_FILE*: The all-contigs sorted BAM to call with.
 - *MERGED_BAM_FILE_INDEX*: The .bai index for the input BAM file
 - *SAMPLE_NAME*: The sample name
-- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file of reads sued for calling be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.
+- *OUTPUT_SINGLE_BAM*: Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'.
 - *OUTPUT_CALLING_BAMS*: Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM.
 - *OUTPUT_UNMAPPED_BAM*: Should an unmapped reads BAM be saved? Default is false.
 - *CONTIGS*: Contig path names to use as PATH_LIST_FILE. Must be set if PATH_LIST_FILE is not.
@@ -553,6 +557,7 @@ Parameters:
 - *MAP_CORES*: Number of cores to use when mapping the reads. Default is 16.
 - *MAP_MEM*: Memory, in GB, to use when mapping the reads. Default is 120.
 - *HAPLOTYPE_SAMPLING*: Whether or not to use haplotype sampling before running giraffe. The sampled graph and its indexes count as indexes, so they are made once unless CANDIDATE_SEPARATE_INDEXES is set. Default is 'true'.
+- *SET_REFERENCE*: (OPTIONAL) Name of the single reference to keep for haplotype sampling.
 - *INDEX_MINIMIZER_WEIGHTED*: Whether to use weighted minimizer indexing. (Default: true)
 - *INDEX_MINIMIZER_MEM*: Memory, in GB, to use when making the minimizer index. (Default: 320 if weighted, 120 otherwise)
 - *KMER_COUNTING_MEM*: Memory, in GB, to use when counting kmers. (Default: 64)
@@ -617,8 +622,8 @@ Workflow for creating a personalized pangenome with [haplotype sampling](https:/
 Parameters:
 
 - *GBZ_FILE*: Path to .gbz index file
-- *INPUT_READ_FILE_FIRST*: Input sample 1st read pair fastq.gz
-- *INPUT_READ_FILE_SECOND*: Input sample 2st read pair fastq.gz
+- *INPUT_READ_FILE_FIRST*: Input sample 1st read pair fastq.gz or fastq
+- *INPUT_READ_FILE_SECOND*: Input sample 2nd read pair fastq.gz or fastq
 - *HAPL_FILE*: Path to .hapl file
 - *DIST_FILE*: Path to .dist file
 - *R_INDEX_FILE*: Path to .ri file
@@ -629,14 +634,13 @@ Parameters:
 - *KMER_COUNTING_MEM*: Memory, in GB, to use when counting kmers. (Default: 64)
 - *HAPLOTYPE_INDEXING_MEM*: Memory, in GB, to use for haplotype sampling indexing tasks (distance index, r-index, haplotype index, sampling, and giraffe distance index). (Default: 120)
 - *INDEX_MINIMIZER_MEM*: Memory, in GB, to use when making the minimizer index. (Default: 320)
-- *WINDOW_LENGTH*: Window length used for building the minimizer index. (Default: 11)
+- *WINDOW_LENGTH*: Window length used for building the minimizer index for sampling haplotypes. (Default: 11)
 - *SUBCHAIN_LENGTH*: Target length (in bp) for subchains. (Default: 10000)
 - *HAPLOTYPE_NUMBER*: Number of generated synthetic haplotypes. (Default: 4)
 - *PRESENT_DISCOUNT*: Multiplicative factor for discounting scores for present kmers. (Default: 0.9)
 - *HET_ADJUST*: Additive term for adjusting scores for heterozygous kmers. (Default: 0.05)
 - *ABSENT_SCORE*: Score for absent kmers. (Default: 0.8)
-- *INCLUDE_REFERENCE*: Include reference paths and generic paths from the full graph in the sampled graph. (Default:
-true)
+- *INCLUDE_REFERENCE*: Include reference paths and generic paths from the full graph in the sampled graph. (Default: true)
 - *SET_REFERENCE*: Name of single reference to include in sampled graph. (Default: all references)
 - *DIPLOID*: Activate diploid sampling. (Default: true)
 - *INDEX_MINIMIZER_K*: K-mer size of minimizer index to produce for sampled graph. Should be 29 for short read mapping and 31 for long read mapping. (Default: 29)

@@ -57,7 +57,7 @@ workflow AcceptanceTest {
         REFERENCE_DICT_FILE: "(OPTIONAL) If specified, use this pre-computed .dict file of sequence lengths."
         HAPLOID_CONTIGS: "(OPTIONAL) Names of contigs in the reference (without REFERENCE_PREFIX) that are haploid in this sample (often chrX and chrY). Not compatible with DeepVariant 1.5."
         PAR_REGIONS_BED_FILE: "(OPTIONAL) BED file with pseudo-autosomal regions. Not compatible with DeepVariant 1.5."
-        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realingment. Default is 'true'."
+        PRUNE_LOW_COMPLEXITY: "Whether or not to remove low-complexity or short in-tail anchors when surjecting and force tail realignment. Default is 'true'."
         LEFTALIGN_BAM: "Whether or not to left-align reads in the BAM. Default is 'true'."
         REALIGN_INDELS: "Whether or not to realign reads near indels. Default is 'true'."
         REALIGNMENT_EXPANSION_BASES: "Number of bases to expand indel realignment targets by on either side, to free up read tails in slippery regions. Default is 160."
@@ -82,6 +82,7 @@ workflow AcceptanceTest {
         MAP_CORES: "Number of cores to use when mapping the reads. Default is 16."
         MAP_MEM: "Memory, in GB, to use when mapping the reads. Default is 120."
         HAPLOTYPE_SAMPLING: "Whether or not to use haplotype sampling before running giraffe. The sampled graph and its indexes count as indexes, so they are made once unless CANDIDATE_SEPARATE_INDEXES is set. Default is 'true'."
+        SET_REFERENCE: "(OPTIONAL) Name of the single reference to keep for haplotype sampling."
         INDEX_MINIMIZER_WEIGHTED: "Whether to use weighted minimizer indexing. (Default: true)"
         INDEX_MINIMIZER_MEM: "Memory, in GB, to use when making the minimizer index. (Default: 320 if weighted, 120 otherwise)"
         KMER_COUNTING_MEM: "Memory, in GB, to use when counting kmers. (Default: 64)"
@@ -165,6 +166,7 @@ workflow AcceptanceTest {
         Int MAP_CORES = 16
         Int MAP_MEM = 120
         Boolean HAPLOTYPE_SAMPLING = true
+        String? SET_REFERENCE
         Boolean INDEX_MINIMIZER_WEIGHTED = true
         Int INDEX_MINIMIZER_MEM = if INDEX_MINIMIZER_WEIGHTED then 320 else 120
         Int KMER_COUNTING_MEM = 64
@@ -255,6 +257,7 @@ workflow AcceptanceTest {
         INPUT_READ_FILE_FIRST=SplitReads.read_1_file,
         INPUT_READ_FILE_SECOND=SplitReads.read_2_file,
         GIRAFFE_PRESET=GIRAFFE_PRESET,
+        SET_REFERENCE=SET_REFERENCE,
         INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
         INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
         KMER_COUNTING_MEM=KMER_COUNTING_MEM,
@@ -277,6 +280,7 @@ workflow AcceptanceTest {
             INPUT_READ_FILE_FIRST=SplitReads.read_1_file,
             INPUT_READ_FILE_SECOND=SplitReads.read_2_file,
             GIRAFFE_PRESET=GIRAFFE_PRESET,
+            SET_REFERENCE=SET_REFERENCE,
             INDEX_MINIMIZER_WEIGHTED=INDEX_MINIMIZER_WEIGHTED,
             INDEX_MINIMIZER_MEM=INDEX_MINIMIZER_MEM,
             KMER_COUNTING_MEM=KMER_COUNTING_MEM,
