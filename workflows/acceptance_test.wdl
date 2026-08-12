@@ -190,11 +190,9 @@ workflow AcceptanceTest {
     # alignments can't be shared no matter what container maps them.
     Boolean share_mapping = !CANDIDATE_SEPARATE_INDEXES && baseline_giraffe_docker == candidate_giraffe_docker
 
-    ####################################################################
-    # Everything the two runs are supposed to have in common is set up #
-    # here, once, so that the vg container is the only thing that      #
-    # differs between them.                                            #
-    ####################################################################
+    ###
+    # Set up shared reads and reference
+    ###
 
     # Both runs have to see exactly the same reads, split exactly the same way, so
     # the reads are converted and chunked once up front.
@@ -242,9 +240,9 @@ workflow AcceptanceTest {
     }
     File truth_vcf_index = select_first([TRUTH_VCF_INDEX, indexTruthVcf.vcf_index_file])
 
-    ###############################################################
-    # Indexes: one set for both runs, or one set per run          #
-    ###############################################################
+    ###
+    # Index the graph
+    ###
 
     call index_wf.IndexForGiraffe as baselineIndexes {
         input:
@@ -295,9 +293,9 @@ workflow AcceptanceTest {
     # when the candidate had its own indexes made at all.
     File? candidate_zipcodes_file = if CANDIDATE_SEPARATE_INDEXES then candidateIndexes.zipcodes_file else baselineIndexes.zipcodes_file
 
-    ###############################################################
-    # Map: once if both sides map the same way, otherwise twice    #
-    ###############################################################
+    ###
+    # Map reads
+    ###
 
     call giraffe_wf.Giraffe as baselineMapping {
         input:
@@ -367,13 +365,11 @@ workflow AcceptanceTest {
     Array[File] baseline_gaf_chunks = select_first([baselineMapping.output_gaf_chunks])
     Array[File] candidate_gaf_chunks = select_first([candidateMapping.output_gaf_chunks, baselineMapping.output_gaf_chunks])
 
-    ###############################################################
-    # Surject: twice, since this is a stage that can be tested     #
-    ###############################################################
+    ###
+    # Surject mappings
+    ###
 
-    # Surjection has to use the graph the reads were mapped to, because the
-    # alignments name its nodes. No truth set goes in here, so no hap.py runs:
-    # the comparison is Aardvark's, below.
+    # Run calling and evaluation for the baseline
     call gaf_wf.GiraffeDeepVariantFromGAF as baselineCalling {
         input:
         GAF_CHUNKS=baseline_gaf_chunks,

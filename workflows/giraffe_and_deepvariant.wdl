@@ -166,9 +166,7 @@ workflow GiraffeDeepVariant {
 
     }
 
-    # Work out which path names to work on, and get a FASTA reference for them
-    # whose contigs match the graph's paths. Both the mapping and the calling
-    # need these, so they are settled here and passed to both.
+    # Get the path names to operate on, and the FASTA reference.
     call reference_wf.PrepareReference {
         input:
         GBZ_FILE=GBZ_FILE,
@@ -186,8 +184,7 @@ workflow GiraffeDeepVariant {
     File reference_index_file = PrepareReference.reference_index_file
     File reference_dict_file = PrepareReference.reference_dict_file
 
-    # Map the reads. Surjection and everything after it happens in the from-GAF
-    # workflow, so this only maps and hands back the alignment chunks.
+    # Map the reads to GAF chunks.
     call giraffe_wf.Giraffe {
         input:
         INPUT_READ_FILE_1=INPUT_READ_FILE_1,

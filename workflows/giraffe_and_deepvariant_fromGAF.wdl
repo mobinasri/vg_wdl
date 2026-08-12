@@ -128,8 +128,7 @@ workflow GiraffeDeepVariantFromGAF {
         String? VG_SURJECT_DOCKER
     }
 
-    # Work out which contigs to work on and get a reference for them whose
-    # contigs match the graph's paths.
+    # Get the contigs to work on, and the reference.
     call reference_wf.PrepareReference {
         input:
         GBZ_FILE=GBZ_FILE,

@@ -5,7 +5,7 @@ import "../../tasks/gam_gaf_utils.wdl" as gautils
 
 workflow Surject {
     meta {
-        description: "## Surject workflow \n Project graph alignments onto the reference paths with `vg surject` and hand back one sorted BAM. Alignments are taken as GAF chunks, which are surjected in parallel and then sorted and merged. No BAM post-processing (left-shifting, indel realignment, splitting by contig) happens here."
+        description: "## Surject workflow \n Project graph alignments onto the reference paths with `vg surject` and hand back one sorted BAM. Alignments are taken as GAF chunks, which are surjected in parallel and then sorted and merged. Doesn't do any other BAM post-processing."
     }
 
     parameter_meta {

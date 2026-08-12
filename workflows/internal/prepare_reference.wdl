@@ -6,7 +6,7 @@ import "../../tasks/vg_map_hts.wdl" as map
 
 workflow PrepareReference {
     meta {
-        description: "## Prepare reference workflow \n Work out which contigs to work on and get a FASTA reference for them, with its .fai and .dict. Anything the caller provides is used as it is; a contig list and a reference that aren't provided are extracted from the graph, so that the reference's contigs match the graph's paths exactly."
+        description: "## Prepare reference workflow \n Work out which contigs to work on and get a FASTA reference for them, with its .fai and .dict. Anything the caller provides is used as it is. If a contig list and a reference aren't provided, they are extracted from the graph."
     }
 
     parameter_meta {

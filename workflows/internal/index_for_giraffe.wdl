@@ -118,6 +118,8 @@ workflow IndexForGiraffe {
 
     # The zipcodes are optional all the way through, so we can't select_first on
     # them; every candidate might be null.
+    # The zipcodes might be missing if we got MIN_FILE but no ZIPCODES_FILE.
+    # This is an increasingly bad idea, but still allowed for now.
     Array[File] possible_zipcode_files = select_all([HaplotypeSampling.sampled_zipcodes, createMinimizerIndex.output_zipcodes, ZIPCODES_FILE])
     # WDL 1.0 has no None literal, so we make a File? that is never assigned.
     if (false) {

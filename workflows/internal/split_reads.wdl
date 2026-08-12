@@ -64,12 +64,8 @@ workflow SplitReads {
     if (PAIRED_READS && !INTERLEAVED_READS) {
         # There is a real mate file to find, either given to us or made by the
         # conversion.
-        File mate_read_file = select_first([INPUT_READ_FILE_2, convertCRAMtoFASTQ.output_fastq_2_file, convertBAMtoFASTQ.output_fastq_2_file])
+        File second_read_file = select_first([INPUT_READ_FILE_2, convertCRAMtoFASTQ.output_fastq_2_file, convertBAMtoFASTQ.output_fastq_2_file])
     }
-    # Interleaved reads are all in the first file, so normally there is no second
-    # file. Anything the caller passed in as a second FASTQ anyway is still used,
-    # rather than silently dropped.
-    File? second_read_file = if PAIRED_READS && !INTERLEAVED_READS then mate_read_file else INPUT_READ_FILE_2
 
     call utils.splitReads as firstReadPair {
         input:
@@ -82,13 +78,14 @@ workflow SplitReads {
     if (PAIRED_READS && !INTERLEAVED_READS) {
         call utils.splitReads as secondReadPair {
             input:
-            in_read_file=select_first([mate_read_file]),
+            in_read_file=select_first([second_read_file]),
             in_pair_id="2",
             in_reads_per_chunk=READS_PER_CHUNK,
             in_split_read_cores=SPLIT_READ_CORES
         }
     }
 
+    # Only output whole read files if asked
     if (OUTPUT_WHOLE_READS) {
         File whole_first_read_file = first_read_file
         File? whole_second_read_file = second_read_file

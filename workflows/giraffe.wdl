@@ -20,8 +20,8 @@ workflow Giraffe {
         CRAM_REF: "Genome fasta file associated with the CRAM file"
         CRAM_REF_INDEX: "Index of the fasta file associated with the CRAM file"
         INPUT_BAM_FILE: "Input BAM file to realign"
-        READ_CHUNKS_1: "(OPTIONAL) Chunks of the 1st reads to map, already split. Given these, the reads are not read or split here, and INPUT_READ_FILE_1 is only used for haplotype sampling."
-        READ_CHUNKS_2: "(OPTIONAL) Chunks of the 2nd reads to map, already split, in the same order as READ_CHUNKS_1. Only used with READ_CHUNKS_1, and only when the reads are paired and not interleaved."
+        READ_CHUNKS_1: "(OPTIONAL) Input reads to map (either all reads or read 1), already split. When used, INPUT_READ_FILE_1 is still used for haplotype sampling."
+        READ_CHUNKS_2: "(OPTIONAL) Input reads to map (read 2), in the same order as READ_CHUNKS_1. Only used with READ_CHUNKS_1, when the reads are paired and not interleaved."
         GBZ_FILE: "Path to .gbz index file"
         DIST_FILE: "Path to .dist index file. Optional if using haplotype sampling."
         MIN_FILE: "Path to .min index file. Optional if using haplotype sampling."
@@ -186,17 +186,15 @@ workflow Giraffe {
     # Null when the reads are single-ended or interleaved, in which case the
     # first set of chunks holds everything.
     Array[File]? read_chunks_2 = if defined(READ_CHUNKS_1) then READ_CHUNKS_2 else SplitReads.read_chunks_2
-    # Whole reads for haplotype sampling. When chunks were handed to us we never
-    # read the reads ourselves, so this is only what the caller passed in.
-    File? whole_read_1_file = if defined(READ_CHUNKS_1) then INPUT_READ_FILE_1 else SplitReads.read_1_file
-    File? whole_read_2_file = if defined(READ_CHUNKS_1) then INPUT_READ_FILE_2 else SplitReads.read_2_file
+    # Whole reads for haplotype sampling, if available
+    File? whole_read_1_file = if defined(SplitReads.read_1_file) then SplitReads.read_1_file else INPUT_READ_FILE_1
+    File? whole_read_2_file = if defined(SplitReads.read_2_file) then SplitReads.read_2_file else INPUT_READ_FILE_2 
 
     if (HAPLOTYPE_SAMPLING) {
         call hapl.HaplotypeSampling {
         input:
             GBZ_FILE=GBZ_FILE,
             INPUT_READ_FILE_FIRST=select_first([whole_read_1_file]),
-            # If we're not doing paired reads the result here is probably null.
             INPUT_READ_FILE_SECOND=whole_read_2_file,
             HAPL_FILE=HAPL_FILE,
             DIST_FILE=DIST_FILE,
@@ -317,9 +315,9 @@ workflow Giraffe {
     }
 
     if (OUTPUT_GAF_CHUNKS) {
-        # Only hand the chunks back when they are asked for: as an output they
-        # would otherwise be kept, and there are as many of them as there are
-        # chunks of reads.
+        # To avoid always saving all the GAF chunks as part of our output,
+        # we make sure this is null unless the caller actually asked for
+        # GAF chunks.
         Array[File] wanted_gaf_chunks = gaf_chunks
     }
 
