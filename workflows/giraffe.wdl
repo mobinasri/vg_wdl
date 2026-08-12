@@ -172,6 +172,8 @@ workflow Giraffe {
             CRAM_REF=CRAM_REF,
             CRAM_REF_INDEX=CRAM_REF_INDEX,
             INPUT_BAM_FILE=INPUT_BAM_FILE,
+            # Haplotype sampling needs to see all of a sample's reads at once,
+            # so keep the whole FASTQs when we are going to sample.
             OUTPUT_WHOLE_READS=HAPLOTYPE_SAMPLING,
             PAIRED_READS=PAIRED_READS,
             INTERLEAVED_READS=INTERLEAVED_READS,
