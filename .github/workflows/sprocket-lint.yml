@@ -5,14 +5,12 @@ on:
     paths:
       - '**.wdl'
       - 'sprocket.toml'
-      - 'sprocket-baseline.toml'
       - '.github/workflows/sprocket-lint.yml'
   pull_request:
     branches: [ master, main ]
     paths:
       - '**.wdl'
       - 'sprocket.toml'
-      - 'sprocket-baseline.toml'
       - '.github/workflows/sprocket-lint.yml'
 
 jobs:
@@ -31,18 +29,7 @@ jobs:
         if: failure() && steps.lint.outcome == 'failure'
         run: |
           cat <<'EOF'
-          sprocket lint failed. Two things cause this:
-
-          1. New findings in code you changed. Fix them, or add a
-             `#@ except: RuleName` directive above the offending item if the
-             finding does not apply.
-
-          2. "Stale entries" in the baseline. This means you *fixed* something
-             that was previously recorded, which is good. It also happens when
-             you edit a line that had a recorded finding, because entries are
-             matched on a hash of the flagged source. Refresh the baseline with:
-
-               sprocket lint --generate-baseline workflows tasks tests
-
-             then commit the updated sprocket-baseline.toml.
+          sprocket lint failed on a new warning-level finding in code you
+          changed. Fix it, or add a `#@ except: RuleName` directive above the
+          offending item if the finding does not apply.
           EOF

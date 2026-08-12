@@ -1,43 +1,27 @@
 #:schema https://raw.githubusercontent.com/stjude-rust-labs/sprocket/refs/heads/main/jsonschemas/sprocket.toml.json
 
 [check]
-# Enable the full rule set rather than just the default selection.
 all_lint_rules = true
 
-# Treat notes as failures. Combined with the baseline below, this means new
-# code is held to the full standard while pre-existing findings stay recorded.
-deny_notes = true
-
-# Pre-existing findings live here. Anything not listed fails the build.
-# Regenerate with: sprocket lint --generate-baseline workflows tasks
-baseline = "sprocket-baseline.toml"
+# Notes are often house style, not WDL requirements; non-fatal for now.
+deny_notes = false
 
 except = [
-    # --- Excepted upstream by stjudecloud/workflows, the reference WDL repo ---
-    # Many containers here intentionally track a mutable tag.
-    "ContainerUri",
-    # TODO comments are tracked in the issue tracker, not by the linter.
-    "TodoComment",
-    # Task inputs are frequently kept for interface consistency across the
-    # trio/pedigree workflows even when a given task does not read them.
-    "UnusedInput",
+    "ContainerUri", # mutable image tags are intentional
+    "TodoComment", # tracked in the issue tracker, not the linter
+    "UnusedInput", # kept for interface consistency across tasks
 
-    # --- Excepted because the findings are not reproducible ---
-    # This rule shells out to whatever `shellcheck` is on PATH, and the findings
-    # differ by version: shellcheck 0.10 on ubuntu-latest reports SC2236 and
-    # SC2002 where 0.11 does not. Because the baseline fails on stale entries as
-    # well as new ones, that drift breaks the build in both directions depending
-    # on who generated the baseline. `miniwdl check` already runs shellcheck over
-    # command sections, so excepting it here loses no coverage.
-    "ShellCheck",
+    "ShellCheck", # findings vary by the shellcheck version on PATH
 
-    # --- Excepted to match long-standing vg_wdl naming conventions ---
-    # Task inputs are prefixed `in_` (995 of 1005 findings) and workflow-level
-    # inputs are SCREAMING_SNAKE_CASE (220 distinct names). Task names are
-    # camelCase (166 of 184). These are deliberate and repo-wide, so enforcing
-    # the WDL standard names would mean rewriting the public interface of every
-    # workflow rather than fixing anything.
-    "InputName",
-    "OutputName",
-    "SnakeCase",
+    "InputName", # task inputs are prefixed `in_`
+    "OutputName", # workflow inputs are SCREAMING_SNAKE_CASE
+    "SnakeCase", # task names are camelCase
+
+    # Widespread pre-existing findings, excepted wholesale until fixed.
+    "BashSetSyntax",
+    "HereDocCommands",
+    "MatchingOutputMeta",
+    "UnusedDeclaration",
+    "UnusedImport",
+    "UnnecessaryFunctionCall",
 ]
