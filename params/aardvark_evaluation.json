@@ -1,0 +1,8 @@
+{
+  "AardvarkEvaluation.QUERY_VCF": "tests/small_sim_graph/s0.vcf.gz",
+  "AardvarkEvaluation.TRUTH_VCF": "tests/small_sim_graph/s0.vcf.gz",
+  "AardvarkEvaluation.REFERENCE_FILE": "tests/small_sim_graph/ref.fa",
+  "AardvarkEvaluation.REFERENCE_INDEX_FILE": "tests/small_sim_graph/ref.fa.fai",
+  "AardvarkEvaluation.REGIONS_BED": "tests/small_sim_graph/ref.bed",
+  "AardvarkEvaluation.SAMPLE_NAME": "s0"
+}

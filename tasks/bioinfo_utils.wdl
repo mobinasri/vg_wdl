@@ -463,6 +463,44 @@ task prepareRealignTargets {
     }
 }
 
+task intersectBeds {
+    input {
+        File in_bed_1
+        File in_bed_2
+        Int in_disk = 2 * round(size([in_bed_1, in_bed_2], "G")) + 2
+    }
+
+    command <<<
+        # Set the exit code of a pipeline to that of the rightmost command
+        # to exit with a non-zero status, or zero if all commands of the pipeline exit
+        set -o pipefail
+        # cause a bash script to exit immediately when a command fails
+        set -e
+        # cause the bash shell to treat unset variables as an error and exit immediately
+        set -u
+        # echo each line of the script to stdout so we can see what is happening
+        set -o xtrace
+        #to turn off echo do 'set +o xtrace'
+        
+        BASE_NAME=($(ls ~{in_bed_1} | rev | cut -f1 -d'/' | rev | sed s/.bed$//g))
+
+        mkdir output
+
+        # Widen the BED regions, but don't escape the chromosomes
+        bedtools intersect -a "~{in_bed_1}" -b "~{in_bed_2}" >"output/${BASE_NAME}.intersected.bed"
+    >>>
+    output {
+        File output_bed_file = glob("output/*.intersected.bed")[0]
+    }
+    runtime {
+        preemptible: 2
+        memory: 4 + " GB"
+        cpu: 1
+        disks: "local-disk " + in_disk + " SSD"
+        docker: "biocontainers/bedtools:v2.27.1dfsg-4-deb_cv1"
+    }
+}
+
 task splitBAMbyPath {
     input {
         String in_sample_name

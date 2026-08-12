@@ -7,7 +7,7 @@ workflow HappyEvaluation {
     meta {
 	    author: "Jean Monlong"
         email: "jmonlong@ucsc.edu"
-        description: "Evaluate small variants using hap.py. More information at [https://github.com/vgteam/vg_wdl/tree/gbz#happy-workflow](https://github.com/vgteam/vg_wdl/tree/gbz#happy-workflow)."
+        description: "Evaluate small variants using hap.py. More information at [https://github.com/vgteam/vg_wdl/tree/master#happy-workflow](https://github.com/vgteam/vg_wdl/tree/master#happy-workflow)."
     }
 
     parameter_meta {
@@ -23,6 +23,7 @@ workflow HappyEvaluation {
         REFERENCE_PREFIX: "(Optional) Remove this off the beginning of sequence names in the VCF"
         REMOVE_HOM_REFS: "(Optional) Should homozygous ref calls be removed? (might help if hap.py segfaults). Default 'false'."
         RUN_STANDALONE_VCFEVAL: "whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)"
+        EVAL_CORES: "Number of cores to use when evaluating variant calls. Default is 8."
         EVAL_MEM: "Memory, in GB, to use when evaluating variant calls. Default is 60."
     }
     
@@ -39,6 +40,7 @@ workflow HappyEvaluation {
         String REFERENCE_PREFIX = ""
         Boolean REMOVE_HOM_REFS = false
         Boolean RUN_STANDALONE_VCFEVAL = true
+        Int EVAL_CORES = 8
         Int EVAL_MEM = 60
     }
     
@@ -110,7 +112,8 @@ workflow HappyEvaluation {
             in_evaluation_regions_file=EVALUATION_REGIONS_BED,
             in_restrict_regions_file=RESTRICT_REGIONS_BED,
             in_target_region=TARGET_REGION,
-            in_mem=EVAL_MEM 
+            in_cores=EVAL_CORES,
+            in_mem=EVAL_MEM
         }
     }
     
@@ -128,6 +131,7 @@ workflow HappyEvaluation {
         in_evaluation_regions_file=EVALUATION_REGIONS_BED,
         in_restrict_regions_file=RESTRICT_REGIONS_BED,
         in_target_region=TARGET_REGION,
+        in_cores=EVAL_CORES,
         in_mem=EVAL_MEM
     }
     
