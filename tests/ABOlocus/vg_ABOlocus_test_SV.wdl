@@ -43,8 +43,8 @@ workflow vg_ABOlocus_test {
     call vg_map_hts.vg_map_hts as map { input:
         sam_bam_cram = reads_bam,
         xg = cons.xg,
-        gcsa = cons.gcsa,
-        gcsa_lcp = cons.gcsa_lcp,
+        gcsa = select_first([cons.gcsa]),
+        gcsa_lcp = select_first([cons.gcsa_lcp]),
         vg_docker = vg_docker
     }
 

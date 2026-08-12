@@ -616,15 +616,18 @@ task runMakeContigMAP {
     Int in_eagle_contigs_length = length(in_eagle_contigs)
     command <<<
         python <<CODE
+        import json
         contigs = "~{sep='\t' in_eagle_contigs}"
         contig_list = contigs.split()
+        contig_map = {}
         for i in range(~{in_eagle_contigs_length}):
             eagle_contig_name = contig_list[i]
-            print("{}\t{}".format(eagle_contig_name,i))
+            contig_map[eagle_contig_name] = i
+        print(json.dumps(contig_map))
         CODE
     >>>
     output {
-        Map[String, Int] eagle_vcf_contig_map = read_map(stdout())
+        Map[String, Int] eagle_vcf_contig_map = read_json(stdout())
     }
     runtime {
         preemptible: 2

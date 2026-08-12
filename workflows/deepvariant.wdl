@@ -2,6 +2,7 @@ version 1.0
 
 import "../tasks/bioinfo_utils.wdl" as utils
 import "../tasks/deepvariant.wdl" as dv
+import "aardvark_evaluation.wdl" as aardvark
 import "happy_evaluation.wdl" as happy
 import "../tasks/vg_map_hts.wdl" as map
 import "./haplotype_sampling.wdl" as hapl
@@ -9,14 +10,14 @@ import "./haplotype_sampling.wdl" as hapl
 workflow DeepVariant {
 
     meta {
-        description: "## DeepVariant workflow \n Partial workflow to go from mapped reads (BAM) to small variant calls (VCF). Reads are pre-processed (e.g. indel realignment). DeepVariant then calls small variants. Includes optional comparison to a truth set."
+        description: "## DeepVariant workflow \n Partial workflow to go from mapped reads (BAM) to small variant calls (VCF). Reads are pre-processed (e.g. indel realignment). DeepVariant then calls small variants. Includes optional comparison to a truth set. More information at [https://github.com/vgteam/vg_wdl/tree/master#deepvariant-workflow](https://github.com/vgteam/vg_wdl/tree/master#deepvariant-workflow)."
     }
 
     parameter_meta {
         MERGED_BAM_FILE: "The all-contigs sorted BAM to call with."
         MERGED_BAM_FILE_INDEX: "The .bai index for the input BAM file"
         SAMPLE_NAME: "The sample name"
-        OUTPUT_SINGLE_BAM: "Should a single merged BAM file be saved? If yes, unmapped reads will be inluded and 'calling bams' (one per contig) won't be outputed by default. Default is 'false'."
+        OUTPUT_SINGLE_BAM: "Should a single merged BAM file of reads used for calling be saved? If yes, unmapped reads will be included and 'calling bams' (one per contig) won't be outputted by default. Default is 'false'."
         OUTPUT_CALLING_BAMS: "Should individual contig BAMs used for calling be saved? Default is the opposite of OUTPUT_SINGLE_BAM."
         OUTPUT_UNMAPPED_BAM: "Should an unmapped reads BAM be saved? Default is false."
         CONTIGS: "Contig path names to use as PATH_LIST_FILE. Must be set if PATH_LIST_FILE is not."
@@ -34,7 +35,9 @@ workflow DeepVariant {
         MIN_MAPQ: "Minimum MAPQ of reads to use for calling. 4 is the lowest at which a mapping is more likely to be right than wrong. Default is the DeepVariant default for the model type."
         TRUTH_VCF: "Path to .vcf.gz to compare against"
         TRUTH_VCF_INDEX: "Path to Tabix index for TRUTH_VCF"
-        EVALUATION_REGIONS_BED: "BED to evaluate against TRUTH_VCF on, where false positives will be counted"
+        EVALUATION_REGIONS_BED: "BED to evaluate against TRUTH_VCF on, where false positives will be counted. Required when EVALUATE_WITH_AARDVARK is set."
+        EVALUATE_WITH_AARDVARK: "Should the calls be compared to TRUTH_VCF with Aardvark instead of hap.py? Default is 'false'."
+        STRATIFICATION_ARCHIVE: "(OPTIONAL) tar.gz of a GIAB-style stratification folder (root TSV plus its referenced BED files) to break the results down by. Only used when EVALUATE_WITH_AARDVARK is set."
         RESTRICT_REGIONS_BED: "BED to restrict comparison against TRUTH_VCF to"
         TARGET_REGION: "contig or region to restrict evaluation to"
         RUN_STANDALONE_VCFEVAL: "whether to run vcfeval on its own in addition to hap.py (can crash on some DeepVariant VCFs)"
@@ -78,6 +81,7 @@ workflow DeepVariant {
         CALL_MEM: "Memory, in GB, to use when calling variants. Default is 50."
         MAKE_EXAMPLES_CORES: "Number of cores to use when making DeepVariant examples. Default is CALL_CORES."
         MAKE_EXAMPLES_MEM: "Memory, in GB, to use when making DeepVariant examples. Default is CALL_MEM."
+        EVAL_CORES: "Number of cores to use when evaluating variant calls. Default is 8."
         EVAL_MEM: "Memory, in GB, to use when evaluating variant calls. Default is 60."
     }
 
@@ -104,6 +108,8 @@ workflow DeepVariant {
         File? TRUTH_VCF
         File? TRUTH_VCF_INDEX
         File? EVALUATION_REGIONS_BED
+        Boolean EVALUATE_WITH_AARDVARK = false
+        File? STRATIFICATION_ARCHIVE
         File? RESTRICT_REGIONS_BED
         String? TARGET_REGION
         Boolean RUN_STANDALONE_VCFEVAL = true
@@ -149,6 +155,7 @@ workflow DeepVariant {
         Int CALL_MEM = 50 + (if defined(PANGENOME_GBZ) then CALL_CORES * 2 else 0)
         Int MAKE_EXAMPLES_CORES = CALL_CORES
         Int MAKE_EXAMPLES_MEM = CALL_MEM
+        Int EVAL_CORES = 8
         Int EVAL_MEM = 60
     }
 
@@ -334,21 +341,52 @@ workflow DeepVariant {
     }
 
     if (defined(TRUTH_VCF) && defined(TRUTH_VCF_INDEX)) {
-        call happy.HappyEvaluation {
-            input:
-                VCF=concatClippedVCFChunks.output_merged_vcf,
-                VCF_INDEX=concatClippedVCFChunks.output_merged_vcf_index,
-                TRUTH_VCF=select_first([TRUTH_VCF]),
-                TRUTH_VCF_INDEX=TRUTH_VCF_INDEX,
-                REFERENCE_FILE=reference_file,
-                REFERENCE_INDEX_FILE=reference_index_file,
-                EVALUATION_REGIONS_BED=EVALUATION_REGIONS_BED,
-                RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
-                TARGET_REGION=TARGET_REGION,
-                # Don't forward the reference prefix; we did it already on the BAMs.
-                REMOVE_HOM_REFS=false,
-                RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
-                EVAL_MEM=EVAL_MEM
+        if (!EVALUATE_WITH_AARDVARK) {
+            call happy.HappyEvaluation {
+                input:
+                    VCF=concatClippedVCFChunks.output_merged_vcf,
+                    VCF_INDEX=concatClippedVCFChunks.output_merged_vcf_index,
+                    TRUTH_VCF=select_first([TRUTH_VCF]),
+                    TRUTH_VCF_INDEX=TRUTH_VCF_INDEX,
+                    REFERENCE_FILE=reference_file,
+                    REFERENCE_INDEX_FILE=reference_index_file,
+                    EVALUATION_REGIONS_BED=EVALUATION_REGIONS_BED,
+                    RESTRICT_REGIONS_BED=RESTRICT_REGIONS_BED,
+                    TARGET_REGION=TARGET_REGION,
+                    # Don't forward the reference prefix; we did it already on the BAMs.
+                    REMOVE_HOM_REFS=false,
+                    RUN_STANDALONE_VCFEVAL=RUN_STANDALONE_VCFEVAL,
+                    EVAL_CORES=EVAL_CORES,
+                    EVAL_MEM=EVAL_MEM
+            }
+        }
+        if (EVALUATE_WITH_AARDVARK) {
+            
+            # Aardvark takes one mandatory BED to actually run on.
+            # We've decided this means EVALUATION_REGIONS_BED is now mandatory.
+            # But we still need to intersect in RESTRICT_REGIONS_BED if provided.
+            if (defined(RESTRICT_REGIONS_BED)) {
+                call utils.intersectBeds as makeAardvarkBed {
+                    input:
+                        in_bed_1 = select_first([EVALUATION_REGIONS_BED]),
+                        in_bed_2 = select_first([RESTRICT_REGIONS_BED])
+                }
+            }
+
+            call aardvark.AardvarkEvaluation {
+                input:
+                    QUERY_VCF=concatClippedVCFChunks.output_merged_vcf,
+                    QUERY_VCF_INDEX=concatClippedVCFChunks.output_merged_vcf_index,
+                    TRUTH_VCF=select_first([TRUTH_VCF]),
+                    TRUTH_VCF_INDEX=TRUTH_VCF_INDEX,
+                    REFERENCE_FILE=reference_file,
+                    REFERENCE_INDEX_FILE=reference_index_file,
+                    REGIONS_BED=select_first([makeAardvarkBed.output_bed_file, EVALUATION_REGIONS_BED]),
+                    STRATIFICATION_ARCHIVE=STRATIFICATION_ARCHIVE,
+                    SAMPLE_NAME=SAMPLE_NAME,
+                    THREADS=EVAL_CORES,
+                    EVAL_MEM=EVAL_MEM
+            }
         }
     }
 
@@ -374,6 +412,8 @@ workflow DeepVariant {
     output {
         File? output_vcfeval_evaluation_archive = HappyEvaluation.output_vcfeval_evaluation_archive
         File? output_happy_evaluation_archive = HappyEvaluation.output_happy_evaluation_archive
+        File? output_aardvark_summary = AardvarkEvaluation.aardvark_summary
+        Array[File]? output_aardvark_all_files = AardvarkEvaluation.aardvark_all_files
         File output_vcf = concatClippedVCFChunks.output_merged_vcf
         File output_vcf_index = concatClippedVCFChunks.output_merged_vcf_index
         File output_gvcf = concatClippedGVCFChunks.output_merged_vcf

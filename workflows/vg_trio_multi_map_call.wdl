@@ -69,7 +69,7 @@ workflow vgTrioPipeline {
         Boolean USE_DECOYS = true                       # Set to 'true' to include decoy contigs from the FASTA reference into the graph reference.
         Boolean SNPEFF_ANNOTATION = true                # Set to 'true' to run snpEff annotation on the joint genotyped VCF.
         Boolean CLEANUP_FILES = true                    # Set to 'false' to turn off intermediate file cleanup.
-        String DECOY_REGEX = ">GL\|>NC_007605\|>hs37d5" # grep regular expression string that is used to extract decoy contig ids. USE_DECOYS must be set to 'true'
+        String DECOY_REGEX = ">GL\\|>NC_007605\\|>hs37d5" # grep regular expression string that is used to extract decoy contig ids. USE_DECOYS must be set to 'true'
     }
     
     File PROBAND_INPUT_READ_FILE_1 = SIBLING_INPUT_READ_FILE_1_LIST[0]  # Input proband 1st read pair fastq.gz

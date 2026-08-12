@@ -1,0 +1,27 @@
+#:schema https://raw.githubusercontent.com/stjude-rust-labs/sprocket/refs/heads/main/jsonschemas/sprocket.toml.json
+
+[check]
+all_lint_rules = true
+
+# Notes are often house style, not WDL requirements; non-fatal for now.
+deny_notes = false
+
+except = [
+    "ContainerUri", # mutable image tags are intentional
+    "TodoComment", # tracked in the issue tracker, not the linter
+    "UnusedInput", # kept for interface consistency across tasks
+
+    "ShellCheck", # findings vary by the shellcheck version on PATH
+
+    "InputName", # task inputs are prefixed `in_`
+    "OutputName", # workflow inputs are SCREAMING_SNAKE_CASE
+    "SnakeCase", # task names are camelCase
+
+    # Widespread pre-existing findings, excepted wholesale until fixed.
+    "BashSetSyntax",
+    "HereDocCommands",
+    "MatchingOutputMeta",
+    "UnusedDeclaration",
+    "UnusedImport",
+    "UnnecessaryFunctionCall",
+]
